@@ -1,0 +1,107 @@
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { submitClipSchema } from "@/lib/validators";
+import { parseTweetUrl } from "@/lib/url-canonicalizer";
+import { getXProvider } from "@/lib/x-provider";
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null);
+  const parsed = submitClipSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+
+  const { data: clipper } = await supabase
+    .from("clippers")
+    .select("id, x_handle, banned")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!clipper) return NextResponse.json({ error: "no clipper profile" }, { status: 403 });
+  if (clipper.banned) return NextResponse.json({ error: "account suspended" }, { status: 403 });
+
+  const parsedUrl = parseTweetUrl(parsed.data.url);
+  if (!parsedUrl) {
+    return NextResponse.json({ error: "invalid X / Twitter URL" }, { status: 400 });
+  }
+
+  // Duplicate check (use admin client to read across all clippers; tweet_id is globally unique)
+  const admin = createSupabaseAdminClient();
+  const dup = await admin
+    .from("clips")
+    .select("id")
+    .eq("tweet_id", parsedUrl.tweetId)
+    .maybeSingle();
+  if (dup.data) {
+    return NextResponse.json({ error: "this tweet has already been submitted" }, { status: 409 });
+  }
+
+  // Active campaign
+  const { data: campaign, error: campaignErr } = await admin
+    .from("campaigns")
+    .select("*")
+    .eq("active", true)
+    .maybeSingle();
+  if (campaignErr || !campaign) {
+    return NextResponse.json({ error: "no active campaign" }, { status: 500 });
+  }
+
+  // Verify with X
+  let lookup;
+  try {
+    lookup = await getXProvider().getTweet(parsedUrl.tweetId);
+  } catch (err) {
+    return NextResponse.json(
+      { error: "X is temporarily unreachable, try again in a minute" },
+      { status: 503 },
+    );
+  }
+
+  if (lookup.deleted) {
+    return NextResponse.json({ error: "this tweet is unavailable or deleted" }, { status: 400 });
+  }
+  if (lookup.authorUsername.toLowerCase() !== clipper.x_handle.toLowerCase()) {
+    return NextResponse.json(
+      {
+        error: `this post is from @${lookup.authorUsername} but your linked handle is @${clipper.x_handle}`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const trackingUntil = new Date();
+  trackingUntil.setUTCDate(trackingUntil.getUTCDate() + Number(campaign.tracking_days));
+
+  const { data: clip, error: insertErr } = await admin
+    .from("clips")
+    .insert({
+      clipper_id: user.id,
+      campaign_id: campaign.id,
+      url: parsedUrl.canonical,
+      tweet_id: parsedUrl.tweetId,
+      tracking_until: trackingUntil.toISOString(),
+      impressions: lookup.impressionCount ?? 0,
+      cpm_rate_snapshot: campaign.cpm_rate,
+      max_payout_snapshot: campaign.max_payout_per_clip,
+      x_author_id: lookup.authorId || null,
+    })
+    .select()
+    .single();
+
+  if (insertErr || !clip) {
+    return NextResponse.json({ error: insertErr?.message ?? "insert failed" }, { status: 500 });
+  }
+
+  await admin.from("clip_impression_snapshots").insert({
+    clip_id: clip.id,
+    impressions: lookup.impressionCount ?? 0,
+    source: "twitterapi_io",
+  });
+
+  return NextResponse.json({ clip });
+}

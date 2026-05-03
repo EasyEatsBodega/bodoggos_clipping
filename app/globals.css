@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0a0b;
+  --surface: #0f0f12;
+  --border: #1f1f24;
+  --border-2: #2a2a30;
+  --text: #e8e8ea;
+  --text-2: #9a9aa5;
+  --text-3: #5a5a65;
+  --accent: #b2ff59;
+  --admin: #ff9d59;
+  --danger: #ff5959;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.label::before {
+  content: "// ";
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.hairline {
+  background: var(--border);
+}
+
+.input-bare {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-2);
+  outline: none;
+  padding: 0.5rem 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  width: 100%;
+}
+
+.input-bare:focus {
+  border-bottom-color: var(--accent);
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.55rem 1rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(250, 250, 250, 0.04);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(255, 89, 89, 0.08);
+}
+
+.dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(178, 255, 89, 0.6);
+  animation: dot-pulse 1.6s ease-out infinite;
+}
+
+@keyframes dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(178, 255, 89, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(178, 255, 89, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(178, 255, 89, 0);
+  }
+}
+
+.row-hover:hover {
+  background: rgba(250, 250, 250, 0.02);
+}
