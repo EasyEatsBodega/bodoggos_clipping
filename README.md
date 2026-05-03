@@ -1,0 +1,1 @@
+# bodoggos_clipping
