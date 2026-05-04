@@ -42,6 +42,7 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
           { label: "CLIPS", href: "/dashboard" },
           { label: clip.tweet_id },
         ]}
+        showLogout
       />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <div className="flex items-baseline justify-between">
