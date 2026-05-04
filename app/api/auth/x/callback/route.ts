@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import { exchangeCodeForToken, getMe } from "@/lib/x-oauth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -114,7 +114,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/?auth_error=x_token_hash", url.origin));
   }
 
-  const supabase = await createSupabaseServerClient();
+  // Build the redirect response first so the SSR client can write Supabase
+  // session cookies directly onto it. Cookies set via next/headers cookies()
+  // do not reliably propagate to a freshly constructed NextResponse.
+  const res = NextResponse.redirect(new URL("/dashboard", url.origin));
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => req.cookies.getAll(),
+        setAll: (items: { name: string; value: string; options?: Record<string, unknown> }[]) => {
+          for (const { name, value, options } of items) {
+            res.cookies.set(name, value, options as never);
+          }
+        },
+      },
+    },
+  );
   const { error: verifyErr } = await supabase.auth.verifyOtp({
     type: "magiclink",
     token_hash,
@@ -123,7 +140,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/?auth_error=x_verify", url.origin));
   }
 
-  const res = NextResponse.redirect(new URL("/dashboard", url.origin));
   res.cookies.delete("x_oauth_state");
   res.cookies.delete("x_oauth_verifier");
   return res;
