@@ -35,6 +35,9 @@ export default async function LandingPage() {
             <Link href={"/auth/magic" as never} className="btn btn-ghost">
               Magic link via email
             </Link>
+            <Link href={"/auth/admin" as never} className="btn btn-ghost">
+              Admin sign in
+            </Link>
           </div>
         </div>
 
