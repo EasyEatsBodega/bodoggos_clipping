@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
@@ -37,13 +38,31 @@ export default async function DashboardPage() {
     <div className="min-h-screen flex flex-col">
       <Header
         crumbs={[
-          { label: "CLIPPER.OPS", href: "/dashboard" },
+          { label: "FLICK CLIPPING", href: "/dashboard" },
           { label: `@${clipper.x_handle}` },
         ]}
         showLogout
       />
       <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
+        {!clipper.solana_wallet && (
+          <div
+            className="border px-4 py-3 flex items-center justify-between gap-4"
+            style={{ borderColor: "var(--admin)", background: "rgba(255, 157, 89, 0.08)" }}
+          >
+            <p className="font-mono text-xs text-text-2">
+              <span className="text-admin">// payout setup needed —</span>{" "}
+              add a Solana wallet so you can get paid when your clips finish tracking.
+            </p>
+            <Link
+              href={"/dashboard/settings" as never}
+              className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline whitespace-nowrap"
+            >
+              add wallet →
+            </Link>
+          </div>
+        )}
+
         <StatGrid>
           <StatCell label="clips" value={fmtInt(kpis.totalClips)} />
           <StatCell label="impressions" value={fmtInt(kpis.totalImpressions)} />

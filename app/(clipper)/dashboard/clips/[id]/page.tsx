@@ -38,7 +38,7 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     <div className="min-h-screen flex flex-col">
       <Header
         crumbs={[
-          { label: "CLIPPER.OPS", href: "/dashboard" },
+          { label: "FLICK CLIPPING", href: "/dashboard" },
           { label: "CLIPS", href: "/dashboard" },
           { label: clip.tweet_id },
         ]}

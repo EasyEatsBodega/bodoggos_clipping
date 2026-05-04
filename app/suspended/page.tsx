@@ -3,7 +3,7 @@ import { Header } from "@/components/Header";
 export default function SuspendedPage() {
   return (
     <div className="min-h-screen flex flex-col">
-      <Header crumbs={[{ label: "CLIPPER.OPS", href: "/" }, { label: "SUSPENDED" }]} />
+      <Header crumbs={[{ label: "FLICK CLIPPING", href: "/" }, { label: "SUSPENDED" }]} />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-20 w-full">
         <p className="label mb-6">account / suspended</p>
         <h1 className="font-serif text-4xl mb-4">This account is suspended.</h1>

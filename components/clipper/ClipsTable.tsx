@@ -26,7 +26,14 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
         <TBody>
           {clips.map((c) => (
             <TR key={c.id}>
-              <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">{c.url}</TD>
+              <TD className="font-mono text-xs text-text-2 max-w-[260px]">
+                <div className="truncate">{c.url}</div>
+                {c.status === "rejected" && c.rejected_reason && (
+                  <div className="text-danger text-[10px] mt-1 normal-case">
+                    rejected: {c.rejected_reason}
+                  </div>
+                )}
+              </TD>
               <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
               <TD className="num">
                 {fmtInt(c.final_impressions ?? c.impressions)}

@@ -32,7 +32,7 @@ export default function MagicLinkPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header crumbs={[{ label: "CLIPPER.OPS", href: "/" }, { label: "MAGIC LINK" }]} />
+      <Header crumbs={[{ label: "FLICK CLIPPING", href: "/" }, { label: "MAGIC LINK" }]} />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-20 w-full">
         <div className="max-w-md">
           <p className="label mb-6">auth / magic link</p>

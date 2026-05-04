@@ -32,7 +32,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header crumbs={[{ label: "CLIPPER.OPS", href: "/" }, { label: "ONBOARDING" }]} />
+      <Header crumbs={[{ label: "FLICK CLIPPING", href: "/" }, { label: "ONBOARDING" }]} />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-20 w-full">
         <div className="max-w-md">
           <p className="label mb-6">onboarding / x handle</p>

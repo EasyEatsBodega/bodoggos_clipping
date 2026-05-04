@@ -12,8 +12,8 @@ const serif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "CLIPPER.OPS",
-  description: "Clipper campaign desk.",
+  title: "Flick Clipping",
+  description: "Post a clip. Track impressions. Get paid in USDC.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

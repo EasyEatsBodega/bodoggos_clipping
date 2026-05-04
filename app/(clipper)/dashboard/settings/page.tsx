@@ -23,7 +23,7 @@ export default async function SettingsPage() {
     <div className="min-h-screen flex flex-col">
       <Header
         crumbs={[
-          { label: "CLIPPER.OPS", href: "/dashboard" },
+          { label: "FLICK CLIPPING", href: "/dashboard" },
           { label: "SETTINGS" },
         ]}
         showLogout
