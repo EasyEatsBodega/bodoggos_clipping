@@ -100,19 +100,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Bridge into Supabase session via magic link generation
+  // Bridge into Supabase session via magic link generation. The hashed token
+  // is returned directly on `properties.hashed_token`; the action_link URL
+  // exposes it as `?token=...`, not `token_hash`.
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email,
   });
-  if (linkErr || !linkData?.properties?.action_link) {
+  if (linkErr || !linkData?.properties?.hashed_token) {
     return NextResponse.redirect(new URL("/?auth_error=x_link", url.origin));
   }
-  const action = new URL(linkData.properties.action_link);
-  const token_hash = action.searchParams.get("token_hash");
-  if (!token_hash) {
-    return NextResponse.redirect(new URL("/?auth_error=x_token_hash", url.origin));
-  }
+  const token_hash = linkData.properties.hashed_token;
 
   // Build the redirect response first so the SSR client can write Supabase
   // session cookies directly onto it. Cookies set via next/headers cookies()
