@@ -18,7 +18,7 @@ export class TwitterApiIoProvider implements XProvider {
 
     const url = `${BASE_URL}/twitter/tweets?ids=${encodeURIComponent(tweetId)}`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.key}` },
+      headers: { "x-api-key": this.key },
       cache: "no-store",
     });
 
