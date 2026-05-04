@@ -56,6 +56,14 @@ export async function POST(req: Request) {
   try {
     lookup = await getXProvider().getTweet(parsedUrl.tweetId);
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[clips] X provider lookup failed", { tweetId: parsedUrl.tweetId, message });
+    if (message.includes("TWITTERAPI_IO_KEY")) {
+      return NextResponse.json(
+        { error: "server misconfigured: X provider key missing" },
+        { status: 500 },
+      );
+    }
     return NextResponse.json(
       { error: "X is temporarily unreachable, try again in a minute" },
       { status: 503 },
