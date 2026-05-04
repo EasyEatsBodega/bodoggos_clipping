@@ -14,6 +14,10 @@ export const overrideClipSchema = z.object({
   reason: z.string().min(1).max(500),
 });
 
+export const rejectClipSchema = z.object({
+  reason: z.string().min(1).max(500),
+});
+
 export const payoutSchema = z.object({
   clipper_id: z.string().uuid(),
   amount: z.number().positive(),

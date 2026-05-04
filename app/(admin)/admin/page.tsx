@@ -1,9 +1,11 @@
 import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
+import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtUsd } from "@/lib/format";
 import { sumNumeric } from "@/lib/payout-calc";
+import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,7 @@ export default async function AdminOverviewPage() {
         accent="admin"
         showLogout
       />
+      <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <StatGrid>
           <StatCell label="impressions" value={fmtInt(totalImpressions)} />
@@ -87,7 +90,14 @@ export default async function AdminOverviewPage() {
                 {leaderboard.map((row, i) => (
                   <TR key={row.id}>
                     <TD className="font-mono text-text-3">{i + 1}</TD>
-                    <TD className="font-mono">@{row.handle}</TD>
+                    <TD className="font-mono">
+                      <Link
+                        href={`/admin/clippers/${row.id}` as never}
+                        className="hover:underline"
+                      >
+                        @{row.handle}
+                      </Link>
+                    </TD>
                     <TD className="num">{fmtInt(row.impressions)}</TD>
                     <TD className="num">{fmtUsd((row.earned / 100).toFixed(2))}</TD>
                   </TR>

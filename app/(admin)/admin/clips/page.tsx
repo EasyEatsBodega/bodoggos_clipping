@@ -3,6 +3,8 @@ import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { OverrideClipButton } from "@/components/admin/OverrideClipButton";
+import { RejectClipButton } from "@/components/admin/RejectClipButton";
+import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,7 @@ export default async function AdminClipsPage({
         accent="admin"
         showLogout
       />
+      <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <div className="flex items-center gap-2">
           <Filter current={status} value={undefined} label="all" />
@@ -46,6 +49,7 @@ export default async function AdminClipsPage({
               <TH>impressions</TH>
               <TH>earned</TH>
               <TH>status</TH>
+              <TH />
               <TH />
             </THead>
             <TBody>
@@ -69,12 +73,15 @@ export default async function AdminClipsPage({
                   <TD>
                     <OverrideClipButton clipId={c.id} current={c.impressions} />
                   </TD>
+                  <TD>
+                    <RejectClipButton clipId={c.id} status={c.status} />
+                  </TD>
                 </TR>
               ))}
               {(!clips || clips.length === 0) && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

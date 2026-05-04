@@ -1,6 +1,7 @@
 import { Header } from "@/components/Header";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ConfigForm } from "@/components/admin/ConfigForm";
+import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function AdminConfigPage() {
         accent="admin"
         showLogout
       />
+      <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <h1 className="label">campaign config</h1>
         <p className="font-mono text-xs text-text-2 max-w-xl">

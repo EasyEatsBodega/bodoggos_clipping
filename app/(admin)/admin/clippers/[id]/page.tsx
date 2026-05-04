@@ -6,6 +6,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { BanToggle } from "@/components/admin/BanToggle";
 import { PayoutForm } from "@/components/admin/PayoutForm";
+import { RejectClipButton } from "@/components/admin/RejectClipButton";
+import { AdminNav } from "@/components/admin/AdminNav";
 import { sumNumeric } from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +50,7 @@ export default async function AdminClipperDetailPage({
         accent="admin"
         showLogout
       />
+      <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <div>
@@ -76,15 +79,28 @@ export default async function AdminClipperDetailPage({
                 <TH>impressions</TH>
                 <TH>earned</TH>
                 <TH>status</TH>
+                <TH />
               </THead>
               <TBody>
                 {(clips ?? []).map((c) => (
                   <TR key={c.id}>
-                    <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">{c.url}</TD>
+                    <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {c.url}
+                      </a>
+                    </TD>
                     <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
                     <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
                     <TD className="num">{c.payout_amount ? fmtUsd(c.payout_amount) : "—"}</TD>
                     <TD className="font-mono text-[10px] uppercase tracking-widest">{c.status}</TD>
+                    <TD>
+                      <RejectClipButton clipId={c.id} status={c.status} />
+                    </TD>
                   </TR>
                 ))}
               </TBody>
