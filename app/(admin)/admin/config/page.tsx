@@ -17,6 +17,7 @@ export default async function AdminConfigPage() {
       <Header
         crumbs={[{ label: "ADMIN.OPS", href: "/admin" }, { label: "CONFIG" }]}
         accent="admin"
+        showLogout
       />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <h1 className="label">campaign config</h1>

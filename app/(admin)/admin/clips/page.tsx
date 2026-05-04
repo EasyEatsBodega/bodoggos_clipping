@@ -27,6 +27,7 @@ export default async function AdminClipsPage({
       <Header
         crumbs={[{ label: "ADMIN.OPS", href: "/admin" }, { label: "CLIPS" }]}
         accent="admin"
+        showLogout
       />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <div className="flex items-center gap-2">

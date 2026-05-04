@@ -46,6 +46,7 @@ export default async function AdminClipperDetailPage({
           { label: `@${clipper.x_handle}` },
         ]}
         accent="admin"
+        showLogout
       />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <div className="flex items-center justify-between">

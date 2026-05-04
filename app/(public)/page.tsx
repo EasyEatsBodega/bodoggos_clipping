@@ -7,7 +7,12 @@ export default async function LandingPage() {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase.auth.getUser();
   if (data.user) {
-    redirect("/dashboard");
+    const { data: admin } = await supabase
+      .from("admin_users")
+      .select("id")
+      .eq("id", data.user.id)
+      .maybeSingle();
+    redirect(admin ? "/admin" : "/dashboard");
   }
 
   return (
