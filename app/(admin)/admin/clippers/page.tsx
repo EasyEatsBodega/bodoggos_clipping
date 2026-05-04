@@ -55,6 +55,7 @@ export default async function AdminClippersPage() {
             <THead>
               <TH>handle</TH>
               <TH>email</TH>
+              <TH>wallet</TH>
               <TH>joined</TH>
               <TH>clips</TH>
               <TH>impressions</TH>
@@ -75,6 +76,15 @@ export default async function AdminClippersPage() {
                       </Link>
                     </TD>
                     <TD className="font-mono text-xs text-text-2 max-w-[200px] truncate">{c.email}</TD>
+                    <TD className="font-mono text-xs max-w-[200px] truncate">
+                      {c.solana_wallet ? (
+                        <span className="text-text-2" title={c.solana_wallet}>
+                          {c.solana_wallet}
+                        </span>
+                      ) : (
+                        <span className="text-danger">not set</span>
+                      )}
+                    </TD>
                     <TD className="font-mono text-xs text-text-2">{fmtRelative(c.joined_at)}</TD>
                     <TD className="num">{fmtInt(s.clips)}</TD>
                     <TD className="num">{fmtInt(s.impressions)}</TD>
@@ -96,7 +106,7 @@ export default async function AdminClippersPage() {
               {(!clippers || clippers.length === 0) && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers yet</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

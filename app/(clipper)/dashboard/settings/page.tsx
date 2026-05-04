@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { WalletForm } from "@/components/clipper/WalletForm";
+import { ClipperNav } from "@/components/clipper/ClipperNav";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +28,16 @@ export default async function SettingsPage() {
         ]}
         showLogout
       />
+      <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <h1 className="label">account</h1>
         <Field label="email" value={clipper.email} />
         <Field label="x handle" value={`@${clipper.x_handle}`} hint="locked at signup" />
         <Field label="auth method" value={clipper.auth_method} />
         <Field label="joined" value={new Date(clipper.joined_at).toISOString().slice(0, 10)} />
+
+        <h2 className="label mt-4">payments</h2>
+        <WalletForm initial={clipper.solana_wallet ?? null} />
       </main>
     </div>
   );

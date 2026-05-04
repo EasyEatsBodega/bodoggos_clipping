@@ -34,6 +34,17 @@ export const onboardingSchema = z.object({
     .regex(/^[A-Za-z0-9_]+$/, "Letters, numbers, and underscore only"),
 });
 
+export const walletSchema = z.object({
+  solana_wallet: z
+    .string()
+    .trim()
+    .regex(
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+      "Must be a valid Solana address (base58, 32–44 chars)",
+    )
+    .nullable(),
+});
+
 export const campaignConfigSchema = z.object({
   name: z.string().min(1).max(100),
   cpm_rate: z.number().positive(),

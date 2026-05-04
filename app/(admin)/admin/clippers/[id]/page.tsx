@@ -56,6 +56,14 @@ export default async function AdminClipperDetailPage({
           <div>
             <h1 className="font-serif text-3xl">@{clipper.x_handle}</h1>
             <p className="font-mono text-xs text-text-2 mt-1">{clipper.email}</p>
+            <p className="font-mono text-xs text-text-2 mt-1">
+              <span className="text-text-3">// solana wallet: </span>
+              {clipper.solana_wallet ? (
+                <span className="text-text">{clipper.solana_wallet}</span>
+              ) : (
+                <span className="text-danger">not set</span>
+              )}
+            </p>
           </div>
           <BanToggle clipperId={clipper.id} initial={clipper.banned} />
         </div>

@@ -8,6 +8,7 @@ export type Clipper = {
   banned: boolean;
   banned_at: string | null;
   banned_reason: string | null;
+  solana_wallet: string | null;
 };
 
 export type Clip = {

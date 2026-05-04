@@ -3,6 +3,7 @@ import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { SubmitClipForm } from "@/components/clipper/SubmitClipForm";
 import { ClipsTable } from "@/components/clipper/ClipsTable";
+import { ClipperNav } from "@/components/clipper/ClipperNav";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClipperKpis } from "@/lib/queries";
 import { fmtInt, fmtUsd } from "@/lib/format";
@@ -41,6 +42,7 @@ export default async function DashboardPage() {
         ]}
         showLogout
       />
+      <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <StatGrid>
           <StatCell label="clips" value={fmtInt(kpis.totalClips)} />
