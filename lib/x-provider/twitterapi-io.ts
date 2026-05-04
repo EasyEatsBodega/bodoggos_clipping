@@ -16,7 +16,7 @@ export class TwitterApiIoProvider implements XProvider {
   async getTweet(tweetId: string): Promise<TweetLookup> {
     if (!this.key) throw new Error("TWITTERAPI_IO_KEY is not set");
 
-    const url = `${BASE_URL}/twitter/tweets?ids=${encodeURIComponent(tweetId)}`;
+    const url = `${BASE_URL}/twitter/tweets?tweet_ids=${encodeURIComponent(tweetId)}`;
     const res = await fetch(url, {
       headers: { "x-api-key": this.key },
       cache: "no-store",
