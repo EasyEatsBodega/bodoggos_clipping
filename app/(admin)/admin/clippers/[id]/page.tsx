@@ -7,6 +7,8 @@ import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { BanToggle } from "@/components/admin/BanToggle";
 import { PayoutForm } from "@/components/admin/PayoutForm";
 import { RejectClipButton } from "@/components/admin/RejectClipButton";
+import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
+import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { sumNumeric } from "@/lib/payout-calc";
 
@@ -65,7 +67,10 @@ export default async function AdminClipperDetailPage({
               )}
             </p>
           </div>
-          <BanToggle clipperId={clipper.id} initial={clipper.banned} />
+          <div className="flex items-center gap-3">
+            <BanToggle clipperId={clipper.id} initial={clipper.banned} />
+            <DeleteClipperButton clipperId={clipper.id} handle={clipper.x_handle} />
+          </div>
         </div>
 
         <StatGrid>
@@ -88,6 +93,7 @@ export default async function AdminClipperDetailPage({
                 <TH>earned</TH>
                 <TH>status</TH>
                 <TH />
+                <TH />
               </THead>
               <TBody>
                 {(clips ?? []).map((c) => (
@@ -108,6 +114,9 @@ export default async function AdminClipperDetailPage({
                     <TD className="font-mono text-[10px] uppercase tracking-widest">{c.status}</TD>
                     <TD>
                       <RejectClipButton clipId={c.id} status={c.status} />
+                    </TD>
+                    <TD>
+                      <DeleteClipButton clipId={c.id} />
                     </TD>
                   </TR>
                 ))}

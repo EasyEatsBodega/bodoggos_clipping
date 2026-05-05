@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { OverrideClipButton } from "@/components/admin/OverrideClipButton";
 import { RejectClipButton } from "@/components/admin/RejectClipButton";
+import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function AdminClipsPage({
               <TH>status</TH>
               <TH />
               <TH />
+              <TH />
             </THead>
             <TBody>
               {(clips ?? []).map((c) => (
@@ -76,12 +78,15 @@ export default async function AdminClipsPage({
                   <TD>
                     <RejectClipButton clipId={c.id} status={c.status} />
                   </TD>
+                  <TD>
+                    <DeleteClipButton clipId={c.id} />
+                  </TD>
                 </TR>
               ))}
               {(!clips || clips.length === 0) && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
