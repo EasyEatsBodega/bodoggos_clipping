@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { SnapshotChart } from "@/components/clipper/SnapshotChart";
+import { DeleteClipButton } from "@/components/clipper/DeleteClipButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 
@@ -82,12 +83,15 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
           <p className="font-mono text-xs text-danger">rejected: {clip.rejected_reason}</p>
         )}
 
-        <Link
-          href={"/dashboard" as never}
-          className="font-mono text-[10px] uppercase tracking-widest text-text-2 hover:text-text"
-        >
-          ← back
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link
+            href={"/dashboard" as never}
+            className="font-mono text-[10px] uppercase tracking-widest text-text-2 hover:text-text"
+          >
+            ← back
+          </Link>
+          <DeleteClipButton clipId={clip.id} redirectTo="/dashboard" />
+        </div>
       </main>
     </div>
   );

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import type { Clip } from "@/lib/db-types";
+import { DeleteClipButton } from "./DeleteClipButton";
 
 export function ClipsTable({ clips }: { clips: Clip[] }) {
   if (!clips.length) {
@@ -21,6 +22,7 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
           <TH>earned</TH>
           <TH>status</TH>
           <TH>window</TH>
+          <TH />
           <TH />
         </THead>
         <TBody>
@@ -54,6 +56,9 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
                 >
                   detail →
                 </Link>
+              </TD>
+              <TD>
+                <DeleteClipButton clipId={c.id} />
               </TD>
             </TR>
           ))}
