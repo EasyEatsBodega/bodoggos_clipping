@@ -12,6 +12,7 @@ import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
 import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
+import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
 
@@ -27,15 +28,21 @@ export default async function AdminClipperDetailPage({
   const { data: clipper } = await admin.from("clippers").select("*").eq("id", id).maybeSingle();
   if (!clipper) notFound();
 
-  const [{ data: clips }, { data: payouts }, { data: clipperFlags }] = await Promise.all([
-    admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
-    admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
-    admin
-      .from("clipper_flags")
-      .select("*")
-      .eq("clipper_id", id)
-      .order("flagged_at", { ascending: false }),
-  ]);
+  const [{ data: clips }, { data: payouts }, { data: clipperFlags }, { data: campaign }] =
+    await Promise.all([
+      admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
+      admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
+      admin
+        .from("clipper_flags")
+        .select("*")
+        .eq("clipper_id", id)
+        .order("flagged_at", { ascending: false }),
+      admin
+        .from("campaigns")
+        .select("cpm_rate, max_payout_per_clip")
+        .eq("active", true)
+        .maybeSingle(),
+    ]);
 
   const clipIds = (clips ?? []).map((c) => c.id);
   const { data: clipFlags } = clipIds.length
@@ -74,6 +81,7 @@ export default async function AdminClipperDetailPage({
           Number(c.impressions ?? 0),
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
+          c.flat_fee_snapshot ?? 0,
         ),
       0,
     );
@@ -122,6 +130,21 @@ export default async function AdminClipperDetailPage({
           <StatCell label="paid" value={fmtUsd(paid)} />
           <StatCell label="outstanding" value={fmtUsd(outstanding)} accent="admin" />
         </StatGrid>
+
+        {campaign && (
+          <PayOverridesForm
+            clipperId={clipper.id}
+            initial={{
+              flat_fee_per_clip: clipper.flat_fee_per_clip ?? "0",
+              cpm_rate_override: clipper.cpm_rate_override,
+              max_payout_override: clipper.max_payout_override,
+            }}
+            campaignDefaults={{
+              cpm_rate: campaign.cpm_rate,
+              max_payout_per_clip: campaign.max_payout_per_clip,
+            }}
+          />
+        )}
 
         <PayoutForm clipperId={clipper.id} suggestedAmount={Number(outstanding)} />
 

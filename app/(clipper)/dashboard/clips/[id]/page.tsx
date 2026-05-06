@@ -6,6 +6,7 @@ import { SnapshotChart } from "@/components/clipper/SnapshotChart";
 import { DeleteClipButton } from "@/components/clipper/DeleteClipButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
+import { computePayoutAmount } from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
 
@@ -101,10 +102,12 @@ function estimatePayout(clip: {
   impressions: number;
   cpm_rate_snapshot: string;
   max_payout_snapshot: string;
+  flat_fee_snapshot?: string | null;
 }): string {
-  const rateCents = Math.round(Number(clip.cpm_rate_snapshot) * 100);
-  const capCents = Math.round(Number(clip.max_payout_snapshot) * 100);
-  const earned = Math.floor((clip.impressions * rateCents) / 1000);
-  const cents = Math.min(earned, capCents);
-  return (cents / 100).toFixed(2);
+  return computePayoutAmount(
+    clip.impressions,
+    clip.cpm_rate_snapshot,
+    clip.max_payout_snapshot,
+    clip.flat_fee_snapshot ?? 0,
+  );
 }

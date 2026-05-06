@@ -19,7 +19,7 @@ export async function POST(
 
   const { data: clip, error: getErr } = await auth.admin
     .from("clips")
-    .select("id, status, cpm_rate_snapshot, max_payout_snapshot")
+    .select("id, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot")
     .eq("id", id)
     .maybeSingle();
   if (getErr || !clip) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -43,6 +43,7 @@ export async function POST(
       parsed.data.impressions,
       clip.cpm_rate_snapshot,
       clip.max_payout_snapshot,
+      clip.flat_fee_snapshot ?? 0,
     );
   }
 

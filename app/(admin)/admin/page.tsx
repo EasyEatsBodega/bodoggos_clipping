@@ -16,7 +16,7 @@ export default async function AdminOverviewPage() {
     admin
       .from("clips")
       .select(
-        "clipper_id, impressions, final_impressions, payout_amount, status, cpm_rate_snapshot, max_payout_snapshot",
+        "clipper_id, impressions, final_impressions, payout_amount, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
       ),
     admin.from("payouts").select("amount"),
     admin.from("clippers").select("id, x_handle, banned"),
@@ -43,6 +43,7 @@ export default async function AdminOverviewPage() {
           Number(c.impressions ?? 0),
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
+          c.flat_fee_snapshot ?? 0,
         ),
       0,
     );

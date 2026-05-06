@@ -9,6 +9,9 @@ export type Clipper = {
   banned_at: string | null;
   banned_reason: string | null;
   solana_wallet: string | null;
+  flat_fee_per_clip: string;
+  cpm_rate_override: string | null;
+  max_payout_override: string | null;
 };
 
 export type Clip = {
@@ -30,6 +33,7 @@ export type Clip = {
   admin_override_reason: string | null;
   cpm_rate_snapshot: string;
   max_payout_snapshot: string;
+  flat_fee_snapshot: string;
   x_author_id: string | null;
 };
 

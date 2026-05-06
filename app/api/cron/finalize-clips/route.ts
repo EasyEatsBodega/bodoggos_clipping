@@ -24,7 +24,9 @@ async function handle(req: Request) {
   const now = new Date();
   const { data: clips, error } = await admin
     .from("clips")
-    .select("id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot")
+    .select(
+      "id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+    )
     .eq("status", "tracking")
     .lte("tracking_until", now.toISOString())
     .limit(500);
@@ -67,6 +69,7 @@ async function handle(req: Request) {
       impressions,
       clip.cpm_rate_snapshot,
       clip.max_payout_snapshot,
+      clip.flat_fee_snapshot ?? 0,
     );
 
     await admin

@@ -1,24 +1,30 @@
 // All money math is integer-cents to avoid float drift, then converted back to numeric strings.
 
+// Total payout = flat fee (per clip) + CPM-based earnings, where the CPM
+// portion is capped at maxPerClip. The flat fee is additive on top of the
+// cap. This matches per-clipper deals like "$25/clip + $2 CPM cap $50":
+// a 0-impression clip pays $25; a million-impression clip pays $25 + $50.
 export function computePayoutCents(
   impressions: number,
   cpmRate: number | string,
   maxPerClip: number | string,
+  flatFee: number | string = 0,
 ): number {
   const rateCents = toCents(cpmRate);
   const capCents = toCents(maxPerClip);
-  if (!Number.isFinite(impressions) || impressions < 0) return 0;
-  // (impressions / 1000) * rateCents → integer cents, rounded down
+  const flatCents = toCents(flatFee);
+  if (!Number.isFinite(impressions) || impressions < 0) return flatCents;
   const earned = Math.floor((impressions * rateCents) / 1000);
-  return Math.min(earned, capCents);
+  return flatCents + Math.min(earned, capCents);
 }
 
 export function computePayoutAmount(
   impressions: number,
   cpmRate: number | string,
   maxPerClip: number | string,
+  flatFee: number | string = 0,
 ): string {
-  return centsToNumeric(computePayoutCents(impressions, cpmRate, maxPerClip));
+  return centsToNumeric(computePayoutCents(impressions, cpmRate, maxPerClip, flatFee));
 }
 
 function toCents(v: number | string): number {

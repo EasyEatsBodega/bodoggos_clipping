@@ -19,7 +19,9 @@ export async function POST(req: Request) {
 
   const { data: clipper } = await supabase
     .from("clippers")
-    .select("id, x_handle, banned")
+    .select(
+      "id, x_handle, banned, flat_fee_per_clip, cpm_rate_override, max_payout_override",
+    )
     .eq("id", user.id)
     .maybeSingle();
   if (!clipper) return NextResponse.json({ error: "no clipper profile" }, { status: 403 });
@@ -85,6 +87,10 @@ export async function POST(req: Request) {
   const trackingUntil = new Date();
   trackingUntil.setUTCDate(trackingUntil.getUTCDate() + Number(campaign.tracking_days));
 
+  const effectiveCpm = clipper.cpm_rate_override ?? campaign.cpm_rate;
+  const effectiveMax = clipper.max_payout_override ?? campaign.max_payout_per_clip;
+  const effectiveFlat = clipper.flat_fee_per_clip ?? 0;
+
   const { data: clip, error: insertErr } = await admin
     .from("clips")
     .insert({
@@ -94,8 +100,9 @@ export async function POST(req: Request) {
       tweet_id: parsedUrl.tweetId,
       tracking_until: trackingUntil.toISOString(),
       impressions: lookup.impressionCount ?? 0,
-      cpm_rate_snapshot: campaign.cpm_rate,
-      max_payout_snapshot: campaign.max_payout_per_clip,
+      cpm_rate_snapshot: effectiveCpm,
+      max_payout_snapshot: effectiveMax,
+      flat_fee_snapshot: effectiveFlat,
       x_author_id: lookup.authorId || null,
     })
     .select()

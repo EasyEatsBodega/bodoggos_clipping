@@ -35,7 +35,7 @@ export default async function AdminPayoutsPage() {
       admin
         .from("clips")
         .select(
-          "clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot",
+          "clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
         ),
       admin.from("payouts").select("clipper_id, amount"),
       admin
@@ -96,6 +96,7 @@ export default async function AdminPayoutsPage() {
           Number(c.impressions ?? 0),
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
+          c.flat_fee_snapshot ?? 0,
         );
       }
     }

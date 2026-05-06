@@ -25,14 +25,27 @@ export default async function DashboardPage() {
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
 
-  const [{ data: clips }, kpis] = await Promise.all([
+  const [{ data: clips }, kpis, { data: campaign }] = await Promise.all([
     supabase
       .from("clips")
       .select("*")
       .eq("clipper_id", user.id)
       .order("submitted_at", { ascending: false }),
     getClipperKpis(supabase, user.id),
+    supabase
+      .from("campaigns")
+      .select("cpm_rate, max_payout_per_clip")
+      .eq("active", true)
+      .maybeSingle(),
   ]);
+
+  const effectiveCpm = Number(clipper.cpm_rate_override ?? campaign?.cpm_rate ?? 0);
+  const effectiveMax = Number(clipper.max_payout_override ?? campaign?.max_payout_per_clip ?? 0);
+  const effectiveFlat = Number(clipper.flat_fee_per_clip ?? 0);
+  const hasCustomDeal =
+    effectiveFlat > 0 ||
+    clipper.cpm_rate_override != null ||
+    clipper.max_payout_override != null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -73,6 +86,18 @@ export default async function DashboardPage() {
             hint={`paid: ${fmtUsd(kpis.totalPaid)}`}
           />
         </StatGrid>
+
+        {campaign && (
+          <p className="font-mono text-xs text-text-2">
+            <span className="text-text-3">// your rate: </span>
+            {effectiveFlat > 0 && <>${effectiveFlat.toFixed(2)} per clip + </>}${
+              effectiveCpm.toFixed(2)
+            } per 1k impressions, capped at ${effectiveMax.toFixed(2)} per clip
+            {hasCustomDeal && (
+              <span className="text-admin"> · custom deal</span>
+            )}
+          </p>
+        )}
 
         <SubmitClipForm />
 

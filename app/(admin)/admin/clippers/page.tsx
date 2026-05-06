@@ -32,7 +32,7 @@ export default async function AdminClippersPage() {
       admin
         .from("clips")
         .select(
-          "clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot",
+          "clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
         ),
       admin.from("payouts").select("clipper_id, amount"),
       admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
@@ -54,6 +54,7 @@ export default async function AdminClippersPage() {
         Number(c.impressions ?? 0),
         c.cpm_rate_snapshot,
         c.max_payout_snapshot,
+        c.flat_fee_snapshot ?? 0,
       );
     }
     stats.set(c.clipper_id, cur);
