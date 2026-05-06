@@ -4,7 +4,7 @@ import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtUsd } from "@/lib/format";
-import { sumNumeric } from "@/lib/payout-calc";
+import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,11 @@ export default async function AdminOverviewPage() {
   const admin = createSupabaseAdminClient();
 
   const [{ data: clips }, { data: payouts }, { data: clippers }] = await Promise.all([
-    admin.from("clips").select("clipper_id, impressions, final_impressions, payout_amount, status"),
+    admin
+      .from("clips")
+      .select(
+        "clipper_id, impressions, final_impressions, payout_amount, status, cpm_rate_snapshot, max_payout_snapshot",
+      ),
     admin.from("payouts").select("amount"),
     admin.from("clippers").select("id, x_handle, banned"),
   ]);
@@ -22,13 +26,34 @@ export default async function AdminOverviewPage() {
     clips?.reduce((s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0), 0) ?? 0;
   const totalSpend = sumNumeric(clips?.map((c) => c.payout_amount) ?? []);
   const totalPaid = sumNumeric(payouts?.map((p) => p.amount) ?? []);
-  const outstanding = (() => {
-    const cents = Math.max(
+  const outstandingCents = Math.max(
+    0,
+    Math.round(Number(totalSpend) * 100) - Math.round(Number(totalPaid) * 100),
+  );
+  const outstanding = `${Math.floor(outstandingCents / 100)}.${(outstandingCents % 100)
+    .toString()
+    .padStart(2, "0")}`;
+
+  const inFlightCents = (clips ?? [])
+    .filter((c) => c.status === "tracking")
+    .reduce(
+      (s, c) =>
+        s +
+        computePayoutCents(
+          Number(c.impressions ?? 0),
+          c.cpm_rate_snapshot,
+          c.max_payout_snapshot,
+        ),
       0,
-      Math.round(Number(totalSpend) * 100) - Math.round(Number(totalPaid) * 100),
     );
-    return `${Math.floor(cents / 100)}.${(cents % 100).toString().padStart(2, "0")}`;
-  })();
+  const inFlight = `${Math.floor(inFlightCents / 100)}.${(inFlightCents % 100)
+    .toString()
+    .padStart(2, "0")}`;
+  const potentialOwedCents = outstandingCents + inFlightCents;
+  const potentialOwed = `${Math.floor(potentialOwedCents / 100)}.${(potentialOwedCents % 100)
+    .toString()
+    .padStart(2, "0")}`;
+
   const activeClippers = clippers?.filter((c) => !c.banned).length ?? 0;
 
   // Leaderboard
@@ -59,6 +84,20 @@ export default async function AdminOverviewPage() {
           <StatCell label="spend (earned)" value={fmtUsd(totalSpend)} accent="admin" />
           <StatCell label="paid" value={fmtUsd(totalPaid)} />
           <StatCell label="outstanding" value={fmtUsd(outstanding)} accent="admin" />
+        </StatGrid>
+
+        <StatGrid>
+          <StatCell label="outstanding (finalized)" value={fmtUsd(outstanding)} accent="admin" />
+          <StatCell label="in-flight (estimate)" value={`~${fmtUsd(inFlight)}`} />
+          <StatCell
+            label="potential owed total"
+            value={`~${fmtUsd(potentialOwed)}`}
+            accent="admin"
+          />
+          <StatCell
+            label="tracking clips"
+            value={fmtInt(clips?.filter((c) => c.status === "tracking").length ?? 0)}
+          />
         </StatGrid>
 
         <StatGrid>
