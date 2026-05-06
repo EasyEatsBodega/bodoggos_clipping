@@ -143,6 +143,8 @@ export default async function AdminClipperDetailPage({
               cpm_rate: campaign.cpm_rate,
               max_payout_per_clip: campaign.max_payout_per_clip,
             }}
+            existingClipCount={clips?.length ?? 0}
+            completedClipCount={(clips ?? []).filter((c) => c.status === "completed").length}
           />
         )}
 

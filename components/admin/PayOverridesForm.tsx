@@ -9,6 +9,8 @@ export function PayOverridesForm({
   clipperId,
   initial,
   campaignDefaults,
+  existingClipCount,
+  completedClipCount,
 }: {
   clipperId: string;
   initial: {
@@ -20,6 +22,8 @@ export function PayOverridesForm({
     cpm_rate: string;
     max_payout_per_clip: string;
   };
+  existingClipCount: number;
+  completedClipCount: number;
 }) {
   const router = useRouter();
   const [flat, setFlat] = useState(Number(initial.flat_fee_per_clip).toFixed(2));
@@ -29,12 +33,28 @@ export function PayOverridesForm({
   const [cap, setCap] = useState(
     initial.max_payout_override != null ? Number(initial.max_payout_override).toFixed(2) : "",
   );
+  const [applyToExisting, setApplyToExisting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
+  const [okMessage, setOkMessage] = useState("saved");
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (applyToExisting && existingClipCount > 0) {
+      const ok = window.confirm(
+        `This will retroactively reprice ${existingClipCount} existing clip${
+          existingClipCount === 1 ? "" : "s"
+        }${
+          completedClipCount > 0
+            ? ` (including ${completedClipCount} completed clip${
+                completedClipCount === 1 ? "" : "s"
+              } whose earned amount will be recomputed)`
+            : ""
+        }. Already-paid amounts in the payouts log are NOT changed, but outstanding may shift. Continue?`,
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setOk(false);
     setError(null);
@@ -45,6 +65,7 @@ export function PayOverridesForm({
         flat_fee_per_clip: Number(flat) || 0,
         cpm_rate_override: cpm.trim() === "" ? null : Number(cpm),
         max_payout_override: cap.trim() === "" ? null : Number(cap),
+        apply_to_existing: applyToExisting,
       }),
     });
     setBusy(false);
@@ -52,6 +73,16 @@ export function PayOverridesForm({
       const j = await res.json().catch(() => ({}));
       setError(j.error ?? "Failed");
       return;
+    }
+    const j = await res.json().catch(() => ({}));
+    if (applyToExisting && j.backfilled) {
+      setOkMessage(
+        `saved · backfilled ${j.backfilled} clip${j.backfilled === 1 ? "" : "s"}${
+          j.recomputed ? ` · recomputed ${j.recomputed} payout${j.recomputed === 1 ? "" : "s"}` : ""
+        }`,
+      );
+    } else {
+      setOkMessage("saved");
     }
     setOk(true);
     router.refresh();
@@ -109,11 +140,32 @@ export function PayOverridesForm({
         ${effectiveFlat.toFixed(2)} per clip + ${effectiveCpm.toFixed(2)} CPM, capped at $
         {effectiveCap.toFixed(2)}
       </p>
+      <label className="flex items-start gap-2 font-mono text-[11px] text-text-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={applyToExisting}
+          onChange={(e) => setApplyToExisting(e.target.checked)}
+          disabled={existingClipCount === 0}
+          className="mt-0.5"
+        />
+        <span>
+          apply retroactively to existing clips
+          {existingClipCount > 0 ? (
+            <span className="text-text-3">
+              {" "}
+              · {existingClipCount} clip{existingClipCount === 1 ? "" : "s"}
+              {completedClipCount > 0 ? `, ${completedClipCount} completed` : ""}
+            </span>
+          ) : (
+            <span className="text-text-3"> · no clips yet</span>
+          )}
+        </span>
+      </label>
       <div className="flex items-center gap-3">
         <Button variant="primary" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save overrides"}
         </Button>
-        {ok && <span className="font-mono text-xs text-accent">saved</span>}
+        {ok && <span className="font-mono text-xs text-accent">{okMessage}</span>}
         {error && <span className="font-mono text-xs text-danger">{error}</span>}
       </div>
     </form>
