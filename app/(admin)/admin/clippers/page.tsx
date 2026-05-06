@@ -3,16 +3,37 @@ import { Header } from "@/components/Header";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
+import { computePayoutCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
+
+type ClipperStats = {
+  clips: number;
+  impressions: number;
+  earnedCents: number;
+  inFlightCents: number;
+  paidCents: number;
+};
+
+const emptyStats = (): ClipperStats => ({
+  clips: 0,
+  impressions: 0,
+  earnedCents: 0,
+  inFlightCents: 0,
+  paidCents: 0,
+});
 
 export default async function AdminClippersPage() {
   const admin = createSupabaseAdminClient();
   const [{ data: clippers }, { data: clips }, { data: payouts }, { data: openFlags }] =
     await Promise.all([
       admin.from("clippers").select("*").order("joined_at", { ascending: false }),
-      admin.from("clips").select("clipper_id, impressions, final_impressions, payout_amount"),
+      admin
+        .from("clips")
+        .select(
+          "clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot",
+        ),
       admin.from("payouts").select("clipper_id, amount"),
       admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
     ]);
@@ -22,19 +43,23 @@ export default async function AdminClippersPage() {
     flagCount.set(f.clipper_id, (flagCount.get(f.clipper_id) ?? 0) + 1);
   }
 
-  const stats = new Map<
-    string,
-    { clips: number; impressions: number; earnedCents: number; paidCents: number }
-  >();
+  const stats = new Map<string, ClipperStats>();
   for (const c of clips ?? []) {
-    const cur = stats.get(c.clipper_id) ?? { clips: 0, impressions: 0, earnedCents: 0, paidCents: 0 };
+    const cur = stats.get(c.clipper_id) ?? emptyStats();
     cur.clips++;
     cur.impressions += Number(c.final_impressions ?? c.impressions ?? 0);
     cur.earnedCents += Math.round(Number(c.payout_amount ?? 0) * 100);
+    if (c.status === "tracking") {
+      cur.inFlightCents += computePayoutCents(
+        Number(c.impressions ?? 0),
+        c.cpm_rate_snapshot,
+        c.max_payout_snapshot,
+      );
+    }
     stats.set(c.clipper_id, cur);
   }
   for (const p of payouts ?? []) {
-    const cur = stats.get(p.clipper_id) ?? { clips: 0, impressions: 0, earnedCents: 0, paidCents: 0 };
+    const cur = stats.get(p.clipper_id) ?? emptyStats();
     cur.paidCents += Math.round(Number(p.amount ?? 0) * 100);
     stats.set(p.clipper_id, cur);
   }
@@ -67,13 +92,14 @@ export default async function AdminClippersPage() {
               <TH>clips</TH>
               <TH>impressions</TH>
               <TH>earned</TH>
+              <TH>in-flight</TH>
               <TH>paid</TH>
               <TH>outstanding</TH>
               <TH>status</TH>
             </THead>
             <TBody>
               {(clippers ?? []).map((c) => {
-                const s = stats.get(c.id) ?? { clips: 0, impressions: 0, earnedCents: 0, paidCents: 0 };
+                const s = stats.get(c.id) ?? emptyStats();
                 const out = Math.max(0, s.earnedCents - s.paidCents);
                 return (
                   <TR key={c.id}>
@@ -96,6 +122,13 @@ export default async function AdminClippersPage() {
                     <TD className="num">{fmtInt(s.clips)}</TD>
                     <TD className="num">{fmtInt(s.impressions)}</TD>
                     <TD className="num">{fmtUsd((s.earnedCents / 100).toFixed(2))}</TD>
+                    <TD className="num text-text-2">
+                      <span title="estimate from clips still tracking">
+                        {s.inFlightCents > 0
+                          ? `~${fmtUsd((s.inFlightCents / 100).toFixed(2))}`
+                          : "—"}
+                      </span>
+                    </TD>
                     <TD className="num">{fmtUsd((s.paidCents / 100).toFixed(2))}</TD>
                     <TD className="num text-admin">{fmtUsd((out / 100).toFixed(2))}</TD>
                     <TD>
@@ -121,7 +154,7 @@ export default async function AdminClippersPage() {
               {(!clippers || clippers.length === 0) && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers yet</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

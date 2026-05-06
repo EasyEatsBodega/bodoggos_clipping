@@ -13,7 +13,7 @@ import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { sumNumeric } from "@/lib/payout-calc";
+import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +65,22 @@ export default async function AdminClipperDetailPage({
     .toString()
     .padStart(2, "0")}`;
 
+  const inFlightCents = (clips ?? [])
+    .filter((c) => c.status === "tracking")
+    .reduce(
+      (s, c) =>
+        s +
+        computePayoutCents(
+          Number(c.impressions ?? 0),
+          c.cpm_rate_snapshot,
+          c.max_payout_snapshot,
+        ),
+      0,
+    );
+  const inFlight = `${Math.floor(inFlightCents / 100)}.${(inFlightCents % 100)
+    .toString()
+    .padStart(2, "0")}`;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
@@ -101,7 +117,9 @@ export default async function AdminClipperDetailPage({
         <StatGrid>
           <StatCell label="clips" value={fmtInt(clips?.length ?? 0)} />
           <StatCell label="impressions" value={fmtInt(totalImpressions)} />
-          <StatCell label="earned" value={fmtUsd(earned)} accent="accent" />
+          <StatCell label="earned (finalized)" value={fmtUsd(earned)} accent="accent" />
+          <StatCell label="in-flight (estimate)" value={`~${fmtUsd(inFlight)}`} />
+          <StatCell label="paid" value={fmtUsd(paid)} />
           <StatCell label="outstanding" value={fmtUsd(outstanding)} accent="admin" />
         </StatGrid>
 
