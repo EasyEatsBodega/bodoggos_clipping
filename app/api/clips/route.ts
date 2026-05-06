@@ -17,13 +17,20 @@ export async function POST(req: Request) {
   const user = userData.user;
   if (!user) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
 
-  const { data: clipper } = await supabase
+  const { data: clipper, error: clipperErr } = await supabase
     .from("clippers")
     .select(
       "id, x_handle, banned, flat_fee_per_clip, cpm_rate_override, max_payout_override",
     )
     .eq("id", user.id)
     .maybeSingle();
+  if (clipperErr) {
+    console.error("[clips] clipper lookup failed", clipperErr);
+    return NextResponse.json(
+      { error: `clipper lookup failed: ${clipperErr.message}` },
+      { status: 500 },
+    );
+  }
   if (!clipper) return NextResponse.json({ error: "no clipper profile" }, { status: 403 });
   if (clipper.banned) return NextResponse.json({ error: "account suspended" }, { status: 403 });
 
