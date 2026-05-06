@@ -61,3 +61,25 @@ export type Campaign = {
   active: boolean;
   created_at: string;
 };
+
+export type ClipperFlag = {
+  id: string;
+  clipper_id: string;
+  reason: string;
+  flagged_by: string | null;
+  flagged_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
+};
+
+export type ClipFlag = {
+  id: string;
+  clip_id: string;
+  reason: string;
+  flagged_by: string | null;
+  flagged_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
+};

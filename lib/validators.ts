@@ -18,6 +18,14 @@ export const rejectClipSchema = z.object({
   reason: z.string().min(1).max(500),
 });
 
+export const flagSchema = z.object({
+  reason: z.string().min(1).max(500),
+});
+
+export const resolveFlagSchema = z.object({
+  resolution: z.string().max(500).optional(),
+});
+
 export const payoutSchema = z.object({
   clipper_id: z.string().uuid(),
   amount: z.number().positive(),

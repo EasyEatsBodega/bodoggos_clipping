@@ -9,6 +9,9 @@ import { PayoutForm } from "@/components/admin/PayoutForm";
 import { RejectClipButton } from "@/components/admin/RejectClipButton";
 import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
+import { FlagButton } from "@/components/admin/FlagButton";
+import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
+import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { sumNumeric } from "@/lib/payout-calc";
 
@@ -24,10 +27,31 @@ export default async function AdminClipperDetailPage({
   const { data: clipper } = await admin.from("clippers").select("*").eq("id", id).maybeSingle();
   if (!clipper) notFound();
 
-  const [{ data: clips }, { data: payouts }] = await Promise.all([
+  const [{ data: clips }, { data: payouts }, { data: clipperFlags }] = await Promise.all([
     admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
     admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
+    admin
+      .from("clipper_flags")
+      .select("*")
+      .eq("clipper_id", id)
+      .order("flagged_at", { ascending: false }),
   ]);
+
+  const clipIds = (clips ?? []).map((c) => c.id);
+  const { data: clipFlags } = clipIds.length
+    ? await admin
+        .from("clip_flags")
+        .select("*")
+        .in("clip_id", clipIds)
+        .order("flagged_at", { ascending: false })
+    : { data: [] as Array<{ id: string; clip_id: string; reason: string; flagged_at: string; resolved_at: string | null; resolution: string | null }> };
+  const openClipFlagCount = new Map<string, number>();
+  for (const f of clipFlags ?? []) {
+    if (!f.resolved_at) {
+      openClipFlagCount.set(f.clip_id, (openClipFlagCount.get(f.clip_id) ?? 0) + 1);
+    }
+  }
+  const openClipperFlagCount = (clipperFlags ?? []).filter((f) => !f.resolved_at).length;
 
   const totalImpressions =
     clips?.reduce((s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0), 0) ?? 0;
@@ -68,6 +92,7 @@ export default async function AdminClipperDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <FlagButton target="clipper" id={clipper.id} flagged={openClipperFlagCount > 0} />
             <BanToggle clipperId={clipper.id} initial={clipper.banned} />
             <DeleteClipperButton clipperId={clipper.id} handle={clipper.x_handle} />
           </div>
@@ -83,6 +108,78 @@ export default async function AdminClipperDetailPage({
         <PayoutForm clipperId={clipper.id} suggestedAmount={Number(outstanding)} />
 
         <section className="flex flex-col gap-3">
+          <h2 className="label">flags / review queue</h2>
+          <div className="border border-border">
+            <Table>
+              <THead>
+                <TH>scope</TH>
+                <TH>reason</TH>
+                <TH>flagged</TH>
+                <TH>state</TH>
+                <TH />
+                <TH />
+              </THead>
+              <TBody>
+                {(clipperFlags ?? []).map((f) => (
+                  <TR key={f.id}>
+                    <TD className="font-mono text-[10px] uppercase tracking-widest">user</TD>
+                    <TD className="font-mono text-xs text-text-2 max-w-[400px] truncate">
+                      <span title={f.reason}>{f.reason}</span>
+                    </TD>
+                    <TD className="font-mono text-xs text-text-2">{fmtRelative(f.flagged_at)}</TD>
+                    <TD className="font-mono text-[10px] uppercase tracking-widest">
+                      {f.resolved_at ? (
+                        <span className="text-text-3" title={f.resolution ?? ""}>
+                          resolved
+                        </span>
+                      ) : (
+                        <span className="text-admin">open</span>
+                      )}
+                    </TD>
+                    <TD>
+                      {!f.resolved_at && <FlagResolveButton kind="clipper" flagId={f.id} />}
+                    </TD>
+                    <TD>
+                      <FlagDeleteButton kind="clipper" flagId={f.id} />
+                    </TD>
+                  </TR>
+                ))}
+                {(clipFlags ?? []).map((f) => (
+                  <TR key={f.id}>
+                    <TD className="font-mono text-[10px] uppercase tracking-widest">clip</TD>
+                    <TD className="font-mono text-xs text-text-2 max-w-[400px] truncate">
+                      <span title={f.reason}>{f.reason}</span>
+                    </TD>
+                    <TD className="font-mono text-xs text-text-2">{fmtRelative(f.flagged_at)}</TD>
+                    <TD className="font-mono text-[10px] uppercase tracking-widest">
+                      {f.resolved_at ? (
+                        <span className="text-text-3" title={f.resolution ?? ""}>
+                          resolved
+                        </span>
+                      ) : (
+                        <span className="text-admin">open</span>
+                      )}
+                    </TD>
+                    <TD>
+                      {!f.resolved_at && <FlagResolveButton kind="clip" flagId={f.id} />}
+                    </TD>
+                    <TD>
+                      <FlagDeleteButton kind="clip" flagId={f.id} />
+                    </TD>
+                  </TR>
+                ))}
+                {(clipperFlags ?? []).length === 0 && (clipFlags ?? []).length === 0 && (
+                  <TR>
+                    <TD className="text-text-3 font-mono text-sm">no flags</TD>
+                    <TD /><TD /><TD /><TD /><TD />
+                  </TR>
+                )}
+              </TBody>
+            </Table>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3">
           <h2 className="label">clips</h2>
           <div className="border border-border">
             <Table>
@@ -94,32 +191,46 @@ export default async function AdminClipperDetailPage({
                 <TH>status</TH>
                 <TH />
                 <TH />
+                <TH />
               </THead>
               <TBody>
-                {(clips ?? []).map((c) => (
-                  <TR key={c.id}>
-                    <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        {c.url}
-                      </a>
-                    </TD>
-                    <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
-                    <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
-                    <TD className="num">{c.payout_amount ? fmtUsd(c.payout_amount) : "—"}</TD>
-                    <TD className="font-mono text-[10px] uppercase tracking-widest">{c.status}</TD>
-                    <TD>
-                      <RejectClipButton clipId={c.id} status={c.status} />
-                    </TD>
-                    <TD>
-                      <DeleteClipButton clipId={c.id} />
-                    </TD>
-                  </TR>
-                ))}
+                {(clips ?? []).map((c) => {
+                  const fc = openClipFlagCount.get(c.id) ?? 0;
+                  return (
+                    <TR key={c.id}>
+                      <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
+                        <a
+                          href={c.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                        >
+                          {c.url}
+                        </a>
+                      </TD>
+                      <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
+                      <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
+                      <TD className="num">{c.payout_amount ? fmtUsd(c.payout_amount) : "—"}</TD>
+                      <TD className="font-mono text-[10px] uppercase tracking-widest">
+                        {c.status}
+                        {fc > 0 && (
+                          <span className="ml-2 text-admin" title={`${fc} open flag${fc === 1 ? "" : "s"}`}>
+                            ⚑{fc > 1 ? fc : ""}
+                          </span>
+                        )}
+                      </TD>
+                      <TD>
+                        <FlagButton target="clip" id={c.id} flagged={fc > 0} />
+                      </TD>
+                      <TD>
+                        <RejectClipButton clipId={c.id} status={c.status} />
+                      </TD>
+                      <TD>
+                        <DeleteClipButton clipId={c.id} />
+                      </TD>
+                    </TR>
+                  );
+                })}
               </TBody>
             </Table>
           </div>

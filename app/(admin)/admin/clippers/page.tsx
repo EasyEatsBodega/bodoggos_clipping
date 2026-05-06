@@ -9,11 +9,18 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminClippersPage() {
   const admin = createSupabaseAdminClient();
-  const [{ data: clippers }, { data: clips }, { data: payouts }] = await Promise.all([
-    admin.from("clippers").select("*").order("joined_at", { ascending: false }),
-    admin.from("clips").select("clipper_id, impressions, final_impressions, payout_amount"),
-    admin.from("payouts").select("clipper_id, amount"),
-  ]);
+  const [{ data: clippers }, { data: clips }, { data: payouts }, { data: openFlags }] =
+    await Promise.all([
+      admin.from("clippers").select("*").order("joined_at", { ascending: false }),
+      admin.from("clips").select("clipper_id, impressions, final_impressions, payout_amount"),
+      admin.from("payouts").select("clipper_id, amount"),
+      admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
+    ]);
+
+  const flagCount = new Map<string, number>();
+  for (const f of openFlags ?? []) {
+    flagCount.set(f.clipper_id, (flagCount.get(f.clipper_id) ?? 0) + 1);
+  }
 
   const stats = new Map<
     string,
@@ -99,6 +106,14 @@ export default async function AdminClippersPage() {
                       >
                         {c.banned ? "banned" : "active"}
                       </span>
+                      {(flagCount.get(c.id) ?? 0) > 0 && (
+                        <span
+                          className="ml-2 font-mono text-[10px] uppercase tracking-widest text-admin"
+                          title={`${flagCount.get(c.id)} open flag${flagCount.get(c.id) === 1 ? "" : "s"}`}
+                        >
+                          ⚑{(flagCount.get(c.id) ?? 0) > 1 ? flagCount.get(c.id) : ""}
+                        </span>
+                      )}
                     </TD>
                   </TR>
                 );
