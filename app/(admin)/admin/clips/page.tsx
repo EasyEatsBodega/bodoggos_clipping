@@ -7,7 +7,9 @@ import { OverrideClipButton } from "@/components/admin/OverrideClipButton";
 import { RejectClipButton } from "@/components/admin/RejectClipButton";
 import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { FlagButton } from "@/components/admin/FlagButton";
+import { TagPicker } from "@/components/admin/TagPicker";
 import { AdminNav } from "@/components/admin/AdminNav";
+import type { ClipTag } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export default async function AdminClipsPage({
     flagged?: string;
     q?: string;
     clipper?: string;
+    tag?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -35,12 +38,36 @@ export default async function AdminClipsPage({
   const flagged = sp.flagged === "1";
   const q = (sp.q ?? "").trim();
   const clipperFilter = sp.clipper ?? undefined;
+  const tagFilter = (sp.tag ?? "").trim() || undefined;
   const sortCol = (VALID_SORT as string[]).includes(sp.sort ?? "")
     ? (sp.sort as SortCol)
     : ("submitted" as SortCol);
   const sortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const admin = createSupabaseAdminClient();
+
+  const { data: allTags } = await admin
+    .from("clip_tags")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true });
+  const tags: ClipTag[] = allTags ?? [];
+  const tagBySlug = new Map(tags.map((t) => [t.slug, t]));
+  const filterTag = tagFilter ? tagBySlug.get(tagFilter) ?? null : null;
+
+  // If filtering by tag, restrict to clip_ids that carry that tag.
+  let tagFilterClipIds: string[] | null = null;
+  if (filterTag) {
+    const { data } = await admin
+      .from("clip_tag_assignments")
+      .select("clip_id")
+      .eq("tag_id", filterTag.id);
+    tagFilterClipIds = (data ?? []).map((r) => r.clip_id);
+    if (tagFilterClipIds.length === 0) {
+      // Short-circuit: no clips carry this tag.
+      tagFilterClipIds = ["00000000-0000-0000-0000-000000000000"];
+    }
+  }
 
   let handleClipperIds: string[] | null = null;
   if (q) {
@@ -83,6 +110,7 @@ export default async function AdminClipsPage({
 
   if (status) query = query.eq("status", status);
   if (clipperFilter) query = query.eq("clipper_id", clipperFilter);
+  if (tagFilterClipIds) query = query.in("id", tagFilterClipIds);
   if (q) {
     const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
     if (handleClipperIds && handleClipperIds.length > 0) {
@@ -118,20 +146,34 @@ export default async function AdminClipsPage({
   }
 
   const clipIds = clips.map((c) => c.id);
-  const { data: openFlags } = clipIds.length
-    ? await admin
-        .from("clip_flags")
-        .select("clip_id")
-        .in("clip_id", clipIds)
-        .is("resolved_at", null)
-    : { data: [] as { clip_id: string }[] };
+  const [{ data: openFlags }, { data: assignments }] = await Promise.all([
+    clipIds.length
+      ? admin
+          .from("clip_flags")
+          .select("clip_id")
+          .in("clip_id", clipIds)
+          .is("resolved_at", null)
+      : Promise.resolve({ data: [] as { clip_id: string }[] }),
+    clipIds.length
+      ? admin
+          .from("clip_tag_assignments")
+          .select("clip_id, tag_id")
+          .in("clip_id", clipIds)
+      : Promise.resolve({ data: [] as { clip_id: string; tag_id: string }[] }),
+  ]);
   const flagCount = new Map<string, number>();
   for (const f of openFlags ?? []) {
     flagCount.set(f.clip_id, (flagCount.get(f.clip_id) ?? 0) + 1);
   }
+  const tagsByClip = new Map<string, string[]>();
+  for (const a of assignments ?? []) {
+    const cur = tagsByClip.get(a.clip_id) ?? [];
+    cur.push(a.tag_id);
+    tagsByClip.set(a.clip_id, cur);
+  }
   const filtered = flagged ? clips.filter((c) => flagCount.has(c.id)) : clips;
 
-  const baseParams = { status, flagged, q, clipper: clipperFilter };
+  const baseParams = { status, flagged, q, clipper: clipperFilter, tag: tagFilter };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -157,6 +199,7 @@ export default async function AdminClipsPage({
           {status && <input type="hidden" name="status" value={status} />}
           {flagged && <input type="hidden" name="flagged" value="1" />}
           {clipperFilter && <input type="hidden" name="clipper" value={clipperFilter} />}
+          {tagFilter && <input type="hidden" name="tag" value={tagFilter} />}
           {sortCol !== "submitted" && <input type="hidden" name="sort" value={sortCol} />}
           {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
           <button
@@ -165,7 +208,7 @@ export default async function AdminClipsPage({
           >
             search
           </button>
-          {(q || status || flagged || clipperFilter) && (
+          {(q || status || flagged || clipperFilter || tagFilter) && (
             <a
               href="/admin/clips"
               className="font-mono text-[10px] uppercase tracking-widest text-text-3 hover:text-text"
@@ -199,6 +242,32 @@ export default async function AdminClipsPage({
           )}
         </div>
 
+        {tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">tag:</span>
+            <a
+              href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
+              className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
+              style={!tagFilter ? { background: "var(--admin)" } : undefined}
+            >
+              all
+            </a>
+            {tags.map((t) => {
+              const on = tagFilter === t.slug;
+              return (
+                <a
+                  key={t.id}
+                  href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
+                  className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+                  style={on ? { background: "var(--admin)" } : undefined}
+                >
+                  {t.label}
+                </a>
+              );
+            })}
+          </div>
+        )}
+
         <div className="border border-border">
           <Table>
             <THead>
@@ -208,6 +277,7 @@ export default async function AdminClipsPage({
               <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
               <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
               <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
+              <TH>tags</TH>
               <TH />
               <TH />
               <TH />
@@ -254,6 +324,13 @@ export default async function AdminClipsPage({
                       )}
                     </TD>
                     <TD>
+                      <TagPicker
+                        clipId={c.id}
+                        allTags={tags}
+                        initialTagIds={tagsByClip.get(c.id) ?? []}
+                      />
+                    </TD>
+                    <TD>
                       <OverrideClipButton clipId={c.id} current={c.impressions} />
                     </TD>
                     <TD>
@@ -271,7 +348,7 @@ export default async function AdminClipsPage({
               {filtered.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
@@ -287,6 +364,7 @@ type BaseParams = {
   flagged: boolean;
   q: string;
   clipper?: string;
+  tag?: string;
 };
 
 function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
@@ -295,6 +373,7 @@ function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
   if (opts.flagged) params.set("flagged", "1");
   if (opts.q) params.set("q", opts.q);
   if (opts.clipper) params.set("clipper", opts.clipper);
+  if (opts.tag) params.set("tag", opts.tag);
   if (opts.sort && opts.sort !== "submitted") params.set("sort", opts.sort);
   if (opts.dir && opts.dir !== "desc") params.set("dir", opts.dir);
   const qs = params.toString();

@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/admin", label: "overview" },
   { href: "/admin/clippers", label: "clippers" },
   { href: "/admin/clips", label: "clips" },
+  { href: "/admin/tags", label: "tags" },
   { href: "/admin/flags", label: "flags" },
   { href: "/admin/payouts", label: "payouts" },
   { href: "/admin/config", label: "config" },

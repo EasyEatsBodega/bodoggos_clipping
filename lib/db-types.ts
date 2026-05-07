@@ -87,3 +87,18 @@ export type ClipFlag = {
   resolved_by: string | null;
   resolution: string | null;
 };
+
+export type ClipTag = {
+  id: string;
+  slug: string;
+  label: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type ClipTagAssignment = {
+  clip_id: string;
+  tag_id: string;
+  assigned_at: string;
+  assigned_by: string | null;
+};

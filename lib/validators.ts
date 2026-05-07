@@ -53,6 +53,20 @@ export const walletSchema = z.object({
     .nullable(),
 });
 
+export const tagSchema = z.object({
+  slug: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z0-9][a-z0-9_-]*$/, "lowercase letters, digits, dash, underscore"),
+  label: z.string().min(1).max(60),
+  sort_order: z.number().int().min(0).max(10000).optional(),
+});
+
+export const setClipTagsSchema = z.object({
+  tag_ids: z.array(z.string().uuid()).max(20),
+});
+
 export const payOverridesSchema = z.object({
   flat_fee_per_clip: z.number().nonnegative().max(10000),
   cpm_rate_override: z.number().nonnegative().max(1000).nullable(),
