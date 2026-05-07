@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -13,18 +14,64 @@ export const dynamic = "force-dynamic";
 export default async function AdminClipsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; flagged?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    flagged?: string;
+    q?: string;
+    clipper?: string;
+  }>;
 }) {
-  const { status, flagged } = await searchParams;
+  const sp = await searchParams;
+  const status =
+    sp.status === "tracking" || sp.status === "completed" || sp.status === "rejected"
+      ? sp.status
+      : undefined;
+  const flagged = sp.flagged === "1";
+  const q = (sp.q ?? "").trim();
+  const clipperFilter = sp.clipper ?? undefined;
+
   const admin = createSupabaseAdminClient();
 
-  let q = admin.from("clips").select("*, clipper:clippers(x_handle)").order("submitted_at", {
-    ascending: false,
-  });
-  if (status === "tracking" || status === "completed" || status === "rejected") {
-    q = q.eq("status", status);
+  // Resolve handle filter to clipper ids if a search term is present.
+  let handleClipperIds: string[] | null = null;
+  if (q) {
+    const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+    const { data: matches } = await admin
+      .from("clippers")
+      .select("id")
+      .ilike("x_handle", like);
+    handleClipperIds = (matches ?? []).map((m) => m.id);
   }
-  const { data: clips } = await q.limit(500);
+
+  let query = admin
+    .from("clips")
+    .select("*, clipper:clippers(id, x_handle)")
+    .order("submitted_at", { ascending: false });
+  if (status) query = query.eq("status", status);
+  if (clipperFilter) query = query.eq("clipper_id", clipperFilter);
+  if (q) {
+    // Search matches either a tweet URL substring OR a handle substring.
+    const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+    if (handleClipperIds && handleClipperIds.length > 0) {
+      const ids = handleClipperIds.map((id) => `"${id}"`).join(",");
+      query = query.or(`url.ilike.${like},clipper_id.in.(${ids})`);
+    } else {
+      query = query.ilike("url", like);
+    }
+  }
+
+  const { data: clips } = await query.limit(500);
+
+  // Resolve clipper handle for the active clipper filter (for the header chip).
+  let clipperFilterHandle: string | null = null;
+  if (clipperFilter) {
+    const { data } = await admin
+      .from("clippers")
+      .select("x_handle")
+      .eq("id", clipperFilter)
+      .maybeSingle();
+    clipperFilterHandle = data?.x_handle ?? null;
+  }
 
   const clipIds = (clips ?? []).map((c) => c.id);
   const { data: openFlags } = clipIds.length
@@ -38,7 +85,14 @@ export default async function AdminClipsPage({
   for (const f of openFlags ?? []) {
     flagCount.set(f.clip_id, (flagCount.get(f.clip_id) ?? 0) + 1);
   }
-  const filtered = flagged === "1" ? (clips ?? []).filter((c) => flagCount.has(c.id)) : (clips ?? []);
+  const filtered = flagged ? (clips ?? []).filter((c) => flagCount.has(c.id)) : (clips ?? []);
+
+  const baseParams = {
+    status,
+    flagged,
+    q,
+    clipper: clipperFilter,
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -49,18 +103,59 @@ export default async function AdminClipsPage({
       />
       <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter current={status} flagged={flagged} value={undefined} label="all" />
-          <Filter current={status} flagged={flagged} value="tracking" label="tracking" />
-          <Filter current={status} flagged={flagged} value="completed" label="completed" />
-          <Filter current={status} flagged={flagged} value="rejected" label="rejected" />
+        <form
+          method="get"
+          action="/admin/clips"
+          className="flex flex-wrap items-center gap-2"
+        >
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="search handle or tweet url…"
+            className="input-bare font-mono text-sm px-3 py-2 border border-border bg-transparent min-w-[260px]"
+          />
+          {status && <input type="hidden" name="status" value={status} />}
+          {flagged && <input type="hidden" name="flagged" value="1" />}
+          {clipperFilter && <input type="hidden" name="clipper" value={clipperFilter} />}
+          <button
+            type="submit"
+            className="font-mono text-[10px] uppercase tracking-widest px-3 py-2 border border-border hover:border-admin"
+          >
+            search
+          </button>
+          {(q || status || flagged || clipperFilter) && (
+            <a
+              href="/admin/clips"
+              className="font-mono text-[10px] uppercase tracking-widest text-text-3 hover:text-text"
+            >
+              clear
+            </a>
+          )}
+        </form>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter base={baseParams} value={undefined} label="all" />
+          <Filter base={baseParams} value="tracking" label="tracking" />
+          <Filter base={baseParams} value="completed" label="completed" />
+          <Filter base={baseParams} value="rejected" label="rejected" />
+          <span className="w-px h-5 bg-border mx-1" />
           <a
-            href={flagged === "1" ? `/admin/clips${status ? `?status=${status}` : ""}` : `/admin/clips?${new URLSearchParams({ ...(status ? { status } : {}), flagged: "1" }).toString()}`}
-            className={`btn ${flagged === "1" ? "btn-primary" : "btn-ghost"}`}
-            style={flagged === "1" ? { background: "var(--admin)" } : undefined}
+            href={buildHref({ ...baseParams, flagged: !flagged })}
+            className={`btn ${flagged ? "btn-primary" : "btn-ghost"}`}
+            style={flagged ? { background: "var(--admin)" } : undefined}
           >
             flagged ⚑
           </a>
+          {clipperFilter && (
+            <Link
+              href={buildHref({ ...baseParams, clipper: undefined }) as never}
+              className="btn btn-primary"
+              style={{ background: "var(--admin)" }}
+            >
+              @{clipperFilterHandle ?? "clipper"} ✕
+            </Link>
+          )}
         </div>
 
         <div className="border border-border">
@@ -80,9 +175,22 @@ export default async function AdminClipsPage({
             <TBody>
               {filtered.map((c) => {
                 const fc = flagCount.get(c.id) ?? 0;
+                const handle = (c as any).clipper?.x_handle ?? "—";
+                const clipperId = (c as any).clipper?.id;
                 return (
                   <TR key={c.id}>
-                    <TD className="font-mono">@{(c as any).clipper?.x_handle ?? "—"}</TD>
+                    <TD className="font-mono">
+                      {clipperId ? (
+                        <Link
+                          href={`/admin/clippers/${clipperId}` as never}
+                          className="hover:underline"
+                        >
+                          @{handle}
+                        </Link>
+                      ) : (
+                        <>@{handle}</>
+                      )}
+                    </TD>
                     <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
                       <a
                         href={c.url}
@@ -121,7 +229,7 @@ export default async function AdminClipsPage({
               })}
               {filtered.length === 0 && (
                 <TR>
-                  <TD className="text-text-3 font-mono text-sm">no clips</TD>
+                  <TD className="text-text-3 font-mono text-sm">no clips match</TD>
                   <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
@@ -133,23 +241,34 @@ export default async function AdminClipsPage({
   );
 }
 
+type BaseParams = {
+  status?: string;
+  flagged: boolean;
+  q: string;
+  clipper?: string;
+};
+
+function buildHref(opts: BaseParams): string {
+  const params = new URLSearchParams();
+  if (opts.status) params.set("status", opts.status);
+  if (opts.flagged) params.set("flagged", "1");
+  if (opts.q) params.set("q", opts.q);
+  if (opts.clipper) params.set("clipper", opts.clipper);
+  const qs = params.toString();
+  return qs ? `/admin/clips?${qs}` : "/admin/clips";
+}
+
 function Filter({
-  current,
-  flagged,
+  base,
   value,
   label,
 }: {
-  current: string | undefined;
-  flagged: string | undefined;
+  base: BaseParams;
   value: string | undefined;
   label: string;
 }) {
-  const active = current === value;
-  const params = new URLSearchParams();
-  if (value) params.set("status", value);
-  if (flagged === "1") params.set("flagged", "1");
-  const qs = params.toString();
-  const href = qs ? `/admin/clips?${qs}` : "/admin/clips";
+  const active = base.status === value;
+  const href = buildHref({ ...base, status: value });
   return (
     <a
       href={href}
