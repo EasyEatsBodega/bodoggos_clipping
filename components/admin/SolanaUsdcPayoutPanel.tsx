@@ -18,7 +18,12 @@ import {
 } from "@solana/spl-token";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { USDC_DECIMALS, USDC_MINT, usdcAmountToUnits } from "@/lib/solana";
+import {
+  USDC_DECIMALS,
+  USDC_MINT,
+  unitsToUsdcAmount,
+  usdcAmountToUnits,
+} from "@/lib/solana";
 
 type Status = "idle" | "building" | "signing" | "confirming" | "recording" | "done" | "error";
 
@@ -74,26 +79,57 @@ export function SolanaUsdcPayoutPanel({
 
     setStatus("building");
     try {
-      const senderAta = await getAssociatedTokenAddress(USDC_MINT, publicKey);
       const recipientAta = await getAssociatedTokenAddress(USDC_MINT, recipient);
 
-      // Sender must already hold USDC.
+      // Find a USDC token account owned by the sender. Most commonly this
+      // is the standard ATA but we handle non-standard accounts too. We
+      // use getParsedTokenAccountsByOwner so a transient RPC error throws
+      // a clear message instead of being misread as "no token account".
+      let senderAccounts;
       try {
-        const senderAcct = await getAccount(connection, senderAta);
-        if (senderAcct.amount < units) {
-          setStatus("error");
-          setError(
-            `insufficient USDC in your wallet (have ${
-              Number(senderAcct.amount) / 10 ** USDC_DECIMALS
-            }, need ${amount})`,
-          );
-          return;
-        }
-      } catch {
+        senderAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+          mint: USDC_MINT,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
         setStatus("error");
-        setError("your wallet has no USDC token account on this network");
+        setError(
+          `couldn't read your USDC balance from RPC: ${msg}. ` +
+            `Public RPC is rate-limited — set NEXT_PUBLIC_SOLANA_RPC_URL to a Helius/QuickNode endpoint and retry.`,
+        );
         return;
       }
+
+      if (senderAccounts.value.length === 0) {
+        setStatus("error");
+        setError("no USDC found in this wallet on this network");
+        return;
+      }
+
+      // Pick an account with enough balance, preferring the standard ATA.
+      const standardAta = await getAssociatedTokenAddress(USDC_MINT, publicKey);
+      const sorted = [...senderAccounts.value].sort((a, b) => {
+        const aIsAta = a.pubkey.equals(standardAta) ? 1 : 0;
+        const bIsAta = b.pubkey.equals(standardAta) ? 1 : 0;
+        return bIsAta - aIsAta;
+      });
+      const candidate = sorted.find((a) => {
+        const bal = a.account.data.parsed.info.tokenAmount.amount as string;
+        return BigInt(bal) >= units;
+      });
+      if (!candidate) {
+        const totalUnits = senderAccounts.value.reduce(
+          (s, a) =>
+            s + BigInt(a.account.data.parsed.info.tokenAmount.amount as string),
+          0n,
+        );
+        setStatus("error");
+        setError(
+          `insufficient USDC: have ${unitsToUsdcAmount(totalUnits)}, need ${amount}`,
+        );
+        return;
+      }
+      const sourceTokenAccount = candidate.pubkey;
 
       const instructions = [];
 
@@ -117,7 +153,7 @@ export function SolanaUsdcPayoutPanel({
 
       instructions.push(
         createTransferCheckedInstruction(
-          senderAta,
+          sourceTokenAccount,
           USDC_MINT,
           recipientAta,
           publicKey,
