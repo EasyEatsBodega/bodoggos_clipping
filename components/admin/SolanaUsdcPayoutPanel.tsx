@@ -1,0 +1,291 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import {
+  PublicKey,
+  Transaction,
+  TransactionMessage,
+  VersionedTransaction,
+} from "@solana/web3.js";
+import {
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction,
+  getAccount,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { USDC_DECIMALS, USDC_MINT, usdcAmountToUnits } from "@/lib/solana";
+
+type Status = "idle" | "building" | "signing" | "confirming" | "recording" | "done" | "error";
+
+export function SolanaUsdcPayoutPanel({
+  clipperId,
+  recipientWallet,
+  suggestedAmount,
+}: {
+  clipperId: string;
+  recipientWallet: string | null;
+  suggestedAmount: number;
+}) {
+  const router = useRouter();
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, connected } = useWallet();
+  const [amount, setAmount] = useState(
+    suggestedAmount > 0 ? suggestedAmount.toFixed(2) : "",
+  );
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [txSig, setTxSig] = useState<string | null>(null);
+
+  const recipient = (() => {
+    if (!recipientWallet) return null;
+    try {
+      return new PublicKey(recipientWallet);
+    } catch {
+      return null;
+    }
+  })();
+
+  async function send() {
+    setError(null);
+    setTxSig(null);
+
+    if (!recipient) {
+      setError("clipper has no valid Solana wallet on file");
+      return;
+    }
+    if (!publicKey || !connected) {
+      setError("connect your wallet first");
+      return;
+    }
+
+    let units: bigint;
+    try {
+      units = usdcAmountToUnits(amount);
+    } catch {
+      setError("invalid amount");
+      return;
+    }
+
+    setStatus("building");
+    try {
+      const senderAta = await getAssociatedTokenAddress(USDC_MINT, publicKey);
+      const recipientAta = await getAssociatedTokenAddress(USDC_MINT, recipient);
+
+      // Sender must already hold USDC.
+      try {
+        const senderAcct = await getAccount(connection, senderAta);
+        if (senderAcct.amount < units) {
+          setStatus("error");
+          setError(
+            `insufficient USDC in your wallet (have ${
+              Number(senderAcct.amount) / 10 ** USDC_DECIMALS
+            }, need ${amount})`,
+          );
+          return;
+        }
+      } catch {
+        setStatus("error");
+        setError("your wallet has no USDC token account on this network");
+        return;
+      }
+
+      const instructions = [];
+
+      // Create the recipient's USDC ATA if it doesn't exist (sender pays the rent ~0.002 SOL).
+      let needCreate = false;
+      try {
+        await getAccount(connection, recipientAta);
+      } catch {
+        needCreate = true;
+      }
+      if (needCreate) {
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            recipientAta,
+            recipient,
+            USDC_MINT,
+          ),
+        );
+      }
+
+      instructions.push(
+        createTransferCheckedInstruction(
+          senderAta,
+          USDC_MINT,
+          recipientAta,
+          publicKey,
+          units,
+          USDC_DECIMALS,
+        ),
+      );
+
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      const messageV0 = new TransactionMessage({
+        payerKey: publicKey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
+      const tx = new VersionedTransaction(messageV0);
+
+      setStatus("signing");
+      const signature = await sendTransaction(tx, connection);
+
+      setStatus("confirming");
+      const confirmed = await connection.confirmTransaction(
+        { signature, blockhash, lastValidBlockHeight },
+        "confirmed",
+      );
+      if (confirmed.value.err) {
+        setStatus("error");
+        setError(`tx failed on-chain: ${JSON.stringify(confirmed.value.err)}`);
+        setTxSig(signature);
+        return;
+      }
+
+      setTxSig(signature);
+      setStatus("recording");
+      const res = await fetch("/api/admin/payouts/solana/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clipper_id: clipperId,
+          amount: Number(amount),
+          signature,
+          note: note || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setStatus("error");
+        setError(`tx confirmed on-chain but server record failed: ${j.error ?? res.status}`);
+        return;
+      }
+
+      setStatus("done");
+      setNote("");
+      router.refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStatus("error");
+      setError(msg);
+    }
+  }
+
+  const explorer = (sig: string) =>
+    `https://solscan.io/tx/${sig}${process.env.NEXT_PUBLIC_SOLANA_NETWORK === "devnet" ? "?cluster=devnet" : ""}`;
+
+  const busy =
+    status === "building" ||
+    status === "signing" ||
+    status === "confirming" ||
+    status === "recording";
+
+  return (
+    <div className="border border-admin/30 p-5 flex flex-col gap-4">
+      <div className="flex items-baseline justify-between">
+        <span className="label">send USDC via wallet</span>
+        <span className="font-mono text-[10px] text-text-3">
+          mainnet · admin signs in browser · server verifies on-chain
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <WalletMultiButton />
+          {publicKey && (
+            <span className="font-mono text-xs text-text-2">
+              {publicKey.toBase58().slice(0, 4)}…{publicKey.toBase58().slice(-4)}
+            </span>
+          )}
+        </div>
+        <span className="font-mono text-xs">
+          <span className="text-text-3">// recipient: </span>
+          {recipientWallet ? (
+            recipient ? (
+              <span className="text-text-2">
+                {recipientWallet.slice(0, 4)}…{recipientWallet.slice(-4)}
+              </span>
+            ) : (
+              <span className="text-danger">invalid address</span>
+            )
+          ) : (
+            <span className="text-danger">no wallet on file</span>
+          )}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Input
+          id="sol-amount"
+          label="amount (USDC)"
+          required
+          type="number"
+          step="0.01"
+          min="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <Input
+          id="sol-note"
+          label="note (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <div className="flex items-end">
+          <Button
+            variant="primary"
+            onClick={send}
+            disabled={busy || !connected || !recipient || !amount}
+          >
+            {status === "building" && "Preparing tx…"}
+            {status === "signing" && "Awaiting wallet…"}
+            {status === "confirming" && "Confirming on-chain…"}
+            {status === "recording" && "Recording payout…"}
+            {(status === "idle" || status === "done" || status === "error") &&
+              `Send $${amount || "0.00"} USDC`}
+          </Button>
+        </div>
+      </div>
+
+      {status === "done" && txSig && (
+        <p className="font-mono text-xs text-accent">
+          ✓ paid · tx{" "}
+          <a
+            href={explorer(txSig)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            {txSig.slice(0, 8)}…
+          </a>
+        </p>
+      )}
+      {error && (
+        <p className="font-mono text-xs text-danger break-all">
+          {error}
+          {txSig && (
+            <>
+              {" "}
+              · tx{" "}
+              <a
+                href={explorer(txSig)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                {txSig.slice(0, 8)}…
+              </a>
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}

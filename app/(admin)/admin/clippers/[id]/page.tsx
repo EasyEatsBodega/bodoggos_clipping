@@ -13,6 +13,7 @@ import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
 import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
+import { SolanaUsdcPayoutPanel } from "@/components/admin/SolanaUsdcPayoutPanel";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
 
@@ -147,6 +148,12 @@ export default async function AdminClipperDetailPage({
             completedClipCount={(clips ?? []).filter((c) => c.status === "completed").length}
           />
         )}
+
+        <SolanaUsdcPayoutPanel
+          clipperId={clipper.id}
+          recipientWallet={clipper.solana_wallet}
+          suggestedAmount={Number(outstanding)}
+        />
 
         <PayoutForm clipperId={clipper.id} suggestedAmount={Number(outstanding)} />
 
