@@ -24,6 +24,31 @@ const emptyStats = (): ClipperStats => ({
   paidCents: 0,
 });
 
+type SortCol =
+  | "handle"
+  | "email"
+  | "joined"
+  | "clips"
+  | "impressions"
+  | "earned"
+  | "in_flight"
+  | "paid"
+  | "outstanding"
+  | "status";
+
+const VALID_SORT: SortCol[] = [
+  "handle",
+  "email",
+  "joined",
+  "clips",
+  "impressions",
+  "earned",
+  "in_flight",
+  "paid",
+  "outstanding",
+  "status",
+];
+
 export default async function AdminClippersPage({
   searchParams,
 }: {
@@ -32,6 +57,8 @@ export default async function AdminClippersPage({
     status?: string;
     flagged?: string;
     custom?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -39,10 +66,14 @@ export default async function AdminClippersPage({
   const statusFilter = sp.status === "active" || sp.status === "banned" ? sp.status : undefined;
   const onlyFlagged = sp.flagged === "1";
   const onlyCustom = sp.custom === "1";
+  const sortCol = (VALID_SORT as string[]).includes(sp.sort ?? "")
+    ? (sp.sort as SortCol)
+    : ("joined" as SortCol);
+  const sortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const admin = createSupabaseAdminClient();
 
-  let clippersQ = admin.from("clippers").select("*").order("joined_at", { ascending: false });
+  let clippersQ = admin.from("clippers").select("*");
   if (q) {
     const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
     clippersQ = clippersQ.or(`x_handle.ilike.${like},email.ilike.${like}`);
@@ -94,10 +125,53 @@ export default async function AdminClippersPage({
     stats.set(p.clipper_id, cur);
   }
 
-  const filtered = (clippers ?? []).filter((c) => {
-    if (onlyFlagged && !flagCount.has(c.id)) return false;
-    return true;
-  });
+  type Row = {
+    id: string;
+    x_handle: string;
+    email: string;
+    solana_wallet: string | null;
+    joined_at: string;
+    banned: boolean;
+    flat_fee_per_clip: string;
+    cpm_rate_override: string | null;
+    max_payout_override: string | null;
+    s: ClipperStats;
+    out: number;
+    flags: number;
+    hasOverride: boolean;
+  };
+
+  const rows: Row[] = (clippers ?? [])
+    .filter((c) => {
+      if (onlyFlagged && !flagCount.has(c.id)) return false;
+      return true;
+    })
+    .map((c) => {
+      const s = stats.get(c.id) ?? emptyStats();
+      return {
+        id: c.id,
+        x_handle: c.x_handle,
+        email: c.email,
+        solana_wallet: c.solana_wallet,
+        joined_at: c.joined_at,
+        banned: c.banned,
+        flat_fee_per_clip: c.flat_fee_per_clip,
+        cpm_rate_override: c.cpm_rate_override,
+        max_payout_override: c.max_payout_override,
+        s,
+        out: Math.max(0, s.earnedCents - s.paidCents),
+        flags: flagCount.get(c.id) ?? 0,
+        hasOverride:
+          Number(c.flat_fee_per_clip ?? 0) > 0 ||
+          c.cpm_rate_override != null ||
+          c.max_payout_override != null,
+      };
+    });
+
+  const sign = sortDir === "asc" ? 1 : -1;
+  rows.sort((a, b) => sign * cmpRows(a, b, sortCol));
+
+  const baseParams = { q, status: statusFilter, flagged: onlyFlagged, custom: onlyCustom };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -133,6 +207,8 @@ export default async function AdminClippersPage({
           {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
           {onlyFlagged && <input type="hidden" name="flagged" value="1" />}
           {onlyCustom && <input type="hidden" name="custom" value="1" />}
+          {sortCol !== "joined" && <input type="hidden" name="sort" value={sortCol} />}
+          {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
           <button
             type="submit"
             className="font-mono text-[10px] uppercase tracking-widest px-3 py-2 border border-border hover:border-admin"
@@ -150,96 +226,88 @@ export default async function AdminClippersPage({
         </form>
 
         <div className="flex flex-wrap items-center gap-2">
-          <FilterPill current={statusFilter} flagged={onlyFlagged} custom={onlyCustom} q={q} value={undefined} label="all" param="status" />
-          <FilterPill current={statusFilter} flagged={onlyFlagged} custom={onlyCustom} q={q} value="active" label="active" param="status" />
-          <FilterPill current={statusFilter} flagged={onlyFlagged} custom={onlyCustom} q={q} value="banned" label="banned" param="status" />
+          <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value={undefined} label="all" />
+          <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value="active" label="active" />
+          <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value="banned" label="banned" />
           <span className="w-px h-5 bg-border mx-1" />
-          <TogglePill on={onlyFlagged} flagged={onlyFlagged} custom={onlyCustom} q={q} status={statusFilter} param="flagged" label="flagged ⚑" />
-          <TogglePill on={onlyCustom} flagged={onlyFlagged} custom={onlyCustom} q={q} status={statusFilter} param="custom" label="custom deal" />
+          <TogglePill on={onlyFlagged} base={baseParams} sortCol={sortCol} sortDir={sortDir} param="flagged" label="flagged ⚑" />
+          <TogglePill on={onlyCustom} base={baseParams} sortCol={sortCol} sortDir={sortDir} param="custom" label="custom deal" />
         </div>
 
         <div className="border border-border">
           <Table>
             <THead>
-              <TH>handle</TH>
-              <TH>email</TH>
+              <SortTH base={baseParams} col="handle" sortCol={sortCol} sortDir={sortDir}>handle</SortTH>
+              <SortTH base={baseParams} col="email" sortCol={sortCol} sortDir={sortDir}>email</SortTH>
               <TH>wallet</TH>
-              <TH>joined</TH>
-              <TH>clips</TH>
-              <TH>impressions</TH>
-              <TH>earned</TH>
-              <TH>in-flight</TH>
-              <TH>paid</TH>
-              <TH>outstanding</TH>
-              <TH>status</TH>
+              <SortTH base={baseParams} col="joined" sortCol={sortCol} sortDir={sortDir}>joined</SortTH>
+              <SortTH base={baseParams} col="clips" sortCol={sortCol} sortDir={sortDir}>clips</SortTH>
+              <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
+              <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
+              <SortTH base={baseParams} col="in_flight" sortCol={sortCol} sortDir={sortDir}>in-flight</SortTH>
+              <SortTH base={baseParams} col="paid" sortCol={sortCol} sortDir={sortDir}>paid</SortTH>
+              <SortTH base={baseParams} col="outstanding" sortCol={sortCol} sortDir={sortDir}>outstanding</SortTH>
+              <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
             </THead>
             <TBody>
-              {filtered.map((c) => {
-                const s = stats.get(c.id) ?? emptyStats();
-                const out = Math.max(0, s.earnedCents - s.paidCents);
-                const hasOverride =
-                  Number(c.flat_fee_per_clip ?? 0) > 0 ||
-                  c.cpm_rate_override != null ||
-                  c.max_payout_override != null;
-                return (
-                  <TR key={c.id}>
-                    <TD className="font-mono">
-                      <Link href={`/admin/clippers/${c.id}` as never} className="hover:underline">
-                        @{c.x_handle}
-                      </Link>
-                      {hasOverride && (
-                        <span
-                          className="ml-2 font-mono text-[10px] uppercase tracking-widest text-admin"
-                          title="custom payout deal"
-                        >
-                          ★
-                        </span>
-                      )}
-                    </TD>
-                    <TD className="font-mono text-xs text-text-2 max-w-[200px] truncate">{c.email}</TD>
-                    <TD className="font-mono text-xs max-w-[200px] truncate">
-                      {c.solana_wallet ? (
-                        <span className="text-text-2" title={c.solana_wallet}>
-                          {c.solana_wallet}
-                        </span>
-                      ) : (
-                        <span className="text-danger">not set</span>
-                      )}
-                    </TD>
-                    <TD className="font-mono text-xs text-text-2">{fmtRelative(c.joined_at)}</TD>
-                    <TD className="num">{fmtInt(s.clips)}</TD>
-                    <TD className="num">{fmtInt(s.impressions)}</TD>
-                    <TD className="num">{fmtUsd((s.earnedCents / 100).toFixed(2))}</TD>
-                    <TD className="num text-text-2">
-                      <span title="estimate from clips still tracking">
-                        {s.inFlightCents > 0
-                          ? `~${fmtUsd((s.inFlightCents / 100).toFixed(2))}`
-                          : "—"}
-                      </span>
-                    </TD>
-                    <TD className="num">{fmtUsd((s.paidCents / 100).toFixed(2))}</TD>
-                    <TD className="num text-admin">{fmtUsd((out / 100).toFixed(2))}</TD>
-                    <TD>
+              {rows.map((r) => (
+                <TR key={r.id}>
+                  <TD className="font-mono">
+                    <Link href={`/admin/clippers/${r.id}` as never} className="hover:underline">
+                      @{r.x_handle}
+                    </Link>
+                    {r.hasOverride && (
                       <span
-                        className={`font-mono text-[10px] uppercase tracking-widest ${
-                          c.banned ? "text-danger" : "text-accent"
-                        }`}
+                        className="ml-2 font-mono text-[10px] uppercase tracking-widest text-admin"
+                        title="custom payout deal"
                       >
-                        {c.banned ? "banned" : "active"}
+                        ★
                       </span>
-                      {(flagCount.get(c.id) ?? 0) > 0 && (
-                        <span
-                          className="ml-2 font-mono text-[10px] uppercase tracking-widest text-admin"
-                          title={`${flagCount.get(c.id)} open flag${flagCount.get(c.id) === 1 ? "" : "s"}`}
-                        >
-                          ⚑{(flagCount.get(c.id) ?? 0) > 1 ? flagCount.get(c.id) : ""}
-                        </span>
-                      )}
-                    </TD>
-                  </TR>
-                );
-              })}
-              {filtered.length === 0 && (
+                    )}
+                  </TD>
+                  <TD className="font-mono text-xs text-text-2 max-w-[200px] truncate">{r.email}</TD>
+                  <TD className="font-mono text-xs max-w-[200px] truncate">
+                    {r.solana_wallet ? (
+                      <span className="text-text-2" title={r.solana_wallet}>
+                        {r.solana_wallet}
+                      </span>
+                    ) : (
+                      <span className="text-danger">not set</span>
+                    )}
+                  </TD>
+                  <TD className="font-mono text-xs text-text-2">{fmtRelative(r.joined_at)}</TD>
+                  <TD className="num">{fmtInt(r.s.clips)}</TD>
+                  <TD className="num">{fmtInt(r.s.impressions)}</TD>
+                  <TD className="num">{fmtUsd((r.s.earnedCents / 100).toFixed(2))}</TD>
+                  <TD className="num text-text-2">
+                    <span title="estimate from clips still tracking">
+                      {r.s.inFlightCents > 0
+                        ? `~${fmtUsd((r.s.inFlightCents / 100).toFixed(2))}`
+                        : "—"}
+                    </span>
+                  </TD>
+                  <TD className="num">{fmtUsd((r.s.paidCents / 100).toFixed(2))}</TD>
+                  <TD className="num text-admin">{fmtUsd((r.out / 100).toFixed(2))}</TD>
+                  <TD>
+                    <span
+                      className={`font-mono text-[10px] uppercase tracking-widest ${
+                        r.banned ? "text-danger" : "text-accent"
+                      }`}
+                    >
+                      {r.banned ? "banned" : "active"}
+                    </span>
+                    {r.flags > 0 && (
+                      <span
+                        className="ml-2 font-mono text-[10px] uppercase tracking-widest text-admin"
+                        title={`${r.flags} open flag${r.flags === 1 ? "" : "s"}`}
+                      >
+                        ⚑{r.flags > 1 ? r.flags : ""}
+                      </span>
+                    )}
+                  </TD>
+                </TR>
+              ))}
+              {rows.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers match</TD>
                   <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
@@ -253,45 +321,74 @@ export default async function AdminClippersPage({
   );
 }
 
-function buildHref(opts: {
-  q?: string;
-  status?: string;
-  flagged?: boolean;
-  custom?: boolean;
-}): string {
+type Row = {
+  x_handle: string;
+  email: string;
+  joined_at: string;
+  banned: boolean;
+  s: ClipperStats;
+  out: number;
+};
+
+function cmpRows(a: Row, b: Row, col: SortCol): number {
+  switch (col) {
+    case "handle":
+      return a.x_handle.localeCompare(b.x_handle);
+    case "email":
+      return a.email.localeCompare(b.email);
+    case "joined":
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    case "clips":
+      return a.s.clips - b.s.clips;
+    case "impressions":
+      return a.s.impressions - b.s.impressions;
+    case "earned":
+      return a.s.earnedCents - b.s.earnedCents;
+    case "in_flight":
+      return a.s.inFlightCents - b.s.inFlightCents;
+    case "paid":
+      return a.s.paidCents - b.s.paidCents;
+    case "outstanding":
+      return a.out - b.out;
+    case "status":
+      return Number(a.banned) - Number(b.banned);
+  }
+}
+
+type BaseParams = {
+  q: string;
+  status: string | undefined;
+  flagged: boolean;
+  custom: boolean;
+};
+
+function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
   const params = new URLSearchParams();
   if (opts.q) params.set("q", opts.q);
   if (opts.status) params.set("status", opts.status);
   if (opts.flagged) params.set("flagged", "1");
   if (opts.custom) params.set("custom", "1");
+  if (opts.sort && opts.sort !== "joined") params.set("sort", opts.sort);
+  if (opts.dir && opts.dir !== "desc") params.set("dir", opts.dir);
   const qs = params.toString();
   return qs ? `/admin/clippers?${qs}` : "/admin/clippers";
 }
 
 function FilterPill({
-  current,
-  flagged,
-  custom,
-  q,
+  base,
+  sortCol,
+  sortDir,
   value,
   label,
-  param,
 }: {
-  current: string | undefined;
-  flagged: boolean;
-  custom: boolean;
-  q: string;
+  base: BaseParams;
+  sortCol: string;
+  sortDir: string;
   value: string | undefined;
   label: string;
-  param: "status";
 }) {
-  const active = current === value;
-  const href = buildHref({
-    q,
-    flagged,
-    custom,
-    [param]: value,
-  });
+  const active = base.status === value;
+  const href = buildHref({ ...base, status: value, sort: sortCol, dir: sortDir });
   return (
     <a
       href={href}
@@ -305,35 +402,66 @@ function FilterPill({
 
 function TogglePill({
   on,
-  flagged,
-  custom,
-  q,
-  status,
+  base,
+  sortCol,
+  sortDir,
   param,
   label,
 }: {
   on: boolean;
-  flagged: boolean;
-  custom: boolean;
-  q: string;
-  status: string | undefined;
+  base: BaseParams;
+  sortCol: string;
+  sortDir: string;
   param: "flagged" | "custom";
   label: string;
 }) {
   const next = {
-    q,
-    status,
-    flagged: param === "flagged" ? !flagged : flagged,
-    custom: param === "custom" ? !custom : custom,
+    ...base,
+    flagged: param === "flagged" ? !base.flagged : base.flagged,
+    custom: param === "custom" ? !base.custom : base.custom,
+    sort: sortCol,
+    dir: sortDir,
   };
-  const href = buildHref(next);
   return (
     <a
-      href={href}
+      href={buildHref(next)}
       className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
       style={on ? { background: "var(--admin)" } : undefined}
     >
       {label}
     </a>
+  );
+}
+
+function SortTH({
+  base,
+  col,
+  sortCol,
+  sortDir,
+  children,
+}: {
+  base: BaseParams;
+  col: SortCol;
+  sortCol: SortCol;
+  sortDir: "asc" | "desc";
+  children: React.ReactNode;
+}) {
+  const active = sortCol === col;
+  // Click cycle: not-active → desc; desc → asc; asc → desc
+  const nextDir: "asc" | "desc" = active && sortDir === "desc" ? "asc" : "desc";
+  const arrow = active ? (sortDir === "desc" ? "▼" : "▲") : "";
+  const href = buildHref({ ...base, sort: col, dir: nextDir });
+  return (
+    <TH>
+      <a
+        href={href}
+        className={`hover:text-text ${active ? "text-admin" : "text-text-2"}`}
+      >
+        <span>
+          {children}
+          {arrow && <span className="ml-1 text-[8px]">{arrow}</span>}
+        </span>
+      </a>
+    </TH>
   );
 }

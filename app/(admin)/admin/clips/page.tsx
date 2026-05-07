@@ -11,6 +11,10 @@ import { AdminNav } from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
 
+type SortCol = "handle" | "tweet" | "submitted" | "impressions" | "earned" | "status";
+
+const VALID_SORT: SortCol[] = ["handle", "tweet", "submitted", "impressions", "earned", "status"];
+
 export default async function AdminClipsPage({
   searchParams,
 }: {
@@ -19,6 +23,8 @@ export default async function AdminClipsPage({
     flagged?: string;
     q?: string;
     clipper?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -29,10 +35,13 @@ export default async function AdminClipsPage({
   const flagged = sp.flagged === "1";
   const q = (sp.q ?? "").trim();
   const clipperFilter = sp.clipper ?? undefined;
+  const sortCol = (VALID_SORT as string[]).includes(sp.sort ?? "")
+    ? (sp.sort as SortCol)
+    : ("submitted" as SortCol);
+  const sortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const admin = createSupabaseAdminClient();
 
-  // Resolve handle filter to clipper ids if a search term is present.
   let handleClipperIds: string[] | null = null;
   if (q) {
     const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
@@ -43,14 +52,38 @@ export default async function AdminClipsPage({
     handleClipperIds = (matches ?? []).map((m) => m.id);
   }
 
-  let query = admin
-    .from("clips")
-    .select("*, clipper:clippers(id, x_handle)")
-    .order("submitted_at", { ascending: false });
+  let query = admin.from("clips").select("*, clipper:clippers(id, x_handle)");
+
+  // Order at the DB level for columns that map directly. For "handle" we
+  // sort in-memory after the join resolves.
+  switch (sortCol) {
+    case "submitted":
+      query = query.order("submitted_at", { ascending: sortDir === "asc" });
+      break;
+    case "impressions":
+      // final_impressions is null for tracking clips; supabase orders nulls last
+      query = query
+        .order("final_impressions", { ascending: sortDir === "asc", nullsFirst: false })
+        .order("impressions", { ascending: sortDir === "asc" });
+      break;
+    case "earned":
+      query = query.order("payout_amount", { ascending: sortDir === "asc", nullsFirst: false });
+      break;
+    case "status":
+      query = query.order("status", { ascending: sortDir === "asc" });
+      break;
+    case "tweet":
+      query = query.order("url", { ascending: sortDir === "asc" });
+      break;
+    case "handle":
+      // Defer to in-memory sort below.
+      query = query.order("submitted_at", { ascending: false });
+      break;
+  }
+
   if (status) query = query.eq("status", status);
   if (clipperFilter) query = query.eq("clipper_id", clipperFilter);
   if (q) {
-    // Search matches either a tweet URL substring OR a handle substring.
     const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
     if (handleClipperIds && handleClipperIds.length > 0) {
       const ids = handleClipperIds.map((id) => `"${id}"`).join(",");
@@ -60,9 +93,20 @@ export default async function AdminClipsPage({
     }
   }
 
-  const { data: clips } = await query.limit(500);
+  const { data: clipsRaw } = await query.limit(500);
 
-  // Resolve clipper handle for the active clipper filter (for the header chip).
+  let clips = clipsRaw ?? [];
+  if (sortCol === "handle") {
+    const sign = sortDir === "asc" ? 1 : -1;
+    clips = [...clips].sort(
+      (a, b) =>
+        sign *
+        ((a as any).clipper?.x_handle ?? "").localeCompare(
+          (b as any).clipper?.x_handle ?? "",
+        ),
+    );
+  }
+
   let clipperFilterHandle: string | null = null;
   if (clipperFilter) {
     const { data } = await admin
@@ -73,7 +117,7 @@ export default async function AdminClipsPage({
     clipperFilterHandle = data?.x_handle ?? null;
   }
 
-  const clipIds = (clips ?? []).map((c) => c.id);
+  const clipIds = clips.map((c) => c.id);
   const { data: openFlags } = clipIds.length
     ? await admin
         .from("clip_flags")
@@ -85,14 +129,9 @@ export default async function AdminClipsPage({
   for (const f of openFlags ?? []) {
     flagCount.set(f.clip_id, (flagCount.get(f.clip_id) ?? 0) + 1);
   }
-  const filtered = flagged ? (clips ?? []).filter((c) => flagCount.has(c.id)) : (clips ?? []);
+  const filtered = flagged ? clips.filter((c) => flagCount.has(c.id)) : clips;
 
-  const baseParams = {
-    status,
-    flagged,
-    q,
-    clipper: clipperFilter,
-  };
+  const baseParams = { status, flagged, q, clipper: clipperFilter };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -118,6 +157,8 @@ export default async function AdminClipsPage({
           {status && <input type="hidden" name="status" value={status} />}
           {flagged && <input type="hidden" name="flagged" value="1" />}
           {clipperFilter && <input type="hidden" name="clipper" value={clipperFilter} />}
+          {sortCol !== "submitted" && <input type="hidden" name="sort" value={sortCol} />}
+          {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
           <button
             type="submit"
             className="font-mono text-[10px] uppercase tracking-widest px-3 py-2 border border-border hover:border-admin"
@@ -135,13 +176,13 @@ export default async function AdminClipsPage({
         </form>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Filter base={baseParams} value={undefined} label="all" />
-          <Filter base={baseParams} value="tracking" label="tracking" />
-          <Filter base={baseParams} value="completed" label="completed" />
-          <Filter base={baseParams} value="rejected" label="rejected" />
+          <Filter base={baseParams} sortCol={sortCol} sortDir={sortDir} value={undefined} label="all" />
+          <Filter base={baseParams} sortCol={sortCol} sortDir={sortDir} value="tracking" label="tracking" />
+          <Filter base={baseParams} sortCol={sortCol} sortDir={sortDir} value="completed" label="completed" />
+          <Filter base={baseParams} sortCol={sortCol} sortDir={sortDir} value="rejected" label="rejected" />
           <span className="w-px h-5 bg-border mx-1" />
           <a
-            href={buildHref({ ...baseParams, flagged: !flagged })}
+            href={buildHref({ ...baseParams, flagged: !flagged, sort: sortCol, dir: sortDir })}
             className={`btn ${flagged ? "btn-primary" : "btn-ghost"}`}
             style={flagged ? { background: "var(--admin)" } : undefined}
           >
@@ -149,7 +190,7 @@ export default async function AdminClipsPage({
           </a>
           {clipperFilter && (
             <Link
-              href={buildHref({ ...baseParams, clipper: undefined }) as never}
+              href={buildHref({ ...baseParams, clipper: undefined, sort: sortCol, dir: sortDir }) as never}
               className="btn btn-primary"
               style={{ background: "var(--admin)" }}
             >
@@ -161,12 +202,12 @@ export default async function AdminClipsPage({
         <div className="border border-border">
           <Table>
             <THead>
-              <TH>handle</TH>
-              <TH>tweet</TH>
-              <TH>submitted</TH>
-              <TH>impressions</TH>
-              <TH>earned</TH>
-              <TH>status</TH>
+              <SortTH base={baseParams} col="handle" sortCol={sortCol} sortDir={sortDir}>handle</SortTH>
+              <SortTH base={baseParams} col="tweet" sortCol={sortCol} sortDir={sortDir}>tweet</SortTH>
+              <SortTH base={baseParams} col="submitted" sortCol={sortCol} sortDir={sortDir}>submitted</SortTH>
+              <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
+              <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
+              <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
               <TH />
               <TH />
               <TH />
@@ -248,27 +289,33 @@ type BaseParams = {
   clipper?: string;
 };
 
-function buildHref(opts: BaseParams): string {
+function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
   const params = new URLSearchParams();
   if (opts.status) params.set("status", opts.status);
   if (opts.flagged) params.set("flagged", "1");
   if (opts.q) params.set("q", opts.q);
   if (opts.clipper) params.set("clipper", opts.clipper);
+  if (opts.sort && opts.sort !== "submitted") params.set("sort", opts.sort);
+  if (opts.dir && opts.dir !== "desc") params.set("dir", opts.dir);
   const qs = params.toString();
   return qs ? `/admin/clips?${qs}` : "/admin/clips";
 }
 
 function Filter({
   base,
+  sortCol,
+  sortDir,
   value,
   label,
 }: {
   base: BaseParams;
+  sortCol: string;
+  sortDir: string;
   value: string | undefined;
   label: string;
 }) {
   const active = base.status === value;
-  const href = buildHref({ ...base, status: value });
+  const href = buildHref({ ...base, status: value, sort: sortCol, dir: sortDir });
   return (
     <a
       href={href}
@@ -277,5 +324,37 @@ function Filter({
     >
       {label}
     </a>
+  );
+}
+
+function SortTH({
+  base,
+  col,
+  sortCol,
+  sortDir,
+  children,
+}: {
+  base: BaseParams;
+  col: SortCol;
+  sortCol: SortCol;
+  sortDir: "asc" | "desc";
+  children: React.ReactNode;
+}) {
+  const active = sortCol === col;
+  const nextDir: "asc" | "desc" = active && sortDir === "desc" ? "asc" : "desc";
+  const arrow = active ? (sortDir === "desc" ? "▼" : "▲") : "";
+  const href = buildHref({ ...base, sort: col, dir: nextDir });
+  return (
+    <TH>
+      <a
+        href={href}
+        className={`hover:text-text ${active ? "text-admin" : "text-text-2"}`}
+      >
+        <span>
+          {children}
+          {arrow && <span className="ml-1 text-[8px]">{arrow}</span>}
+        </span>
+      </a>
+    </TH>
   );
 }
