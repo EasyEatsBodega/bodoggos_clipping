@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import {
+  type Connection,
   PublicKey,
-  Transaction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
@@ -26,6 +26,38 @@ import {
 } from "@/lib/solana";
 
 type Status = "idle" | "building" | "signing" | "confirming" | "recording" | "done" | "error";
+
+// Poll signature status instead of using signatureSubscribe so the wallet
+// adapter Connection works through our HTTP-only RPC proxy (no WS endpoint).
+async function pollSignatureConfirmation(
+  connection: Connection,
+  signature: string,
+  lastValidBlockHeight: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const start = Date.now();
+  const timeoutMs = 90_000;
+  while (Date.now() - start < timeoutMs) {
+    const { value } = await connection.getSignatureStatuses([signature]);
+    const status = value[0];
+    if (status) {
+      if (status.err) {
+        return { ok: false, error: `tx failed on-chain: ${JSON.stringify(status.err)}` };
+      }
+      if (
+        status.confirmationStatus === "confirmed" ||
+        status.confirmationStatus === "finalized"
+      ) {
+        return { ok: true };
+      }
+    }
+    const blockHeight = await connection.getBlockHeight();
+    if (blockHeight > lastValidBlockHeight) {
+      return { ok: false, error: "tx expired before confirmation" };
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return { ok: false, error: "timed out waiting for confirmation" };
+}
 
 export function SolanaUsdcPayoutPanel({
   clipperId,
@@ -174,13 +206,14 @@ export function SolanaUsdcPayoutPanel({
       const signature = await sendTransaction(tx, connection);
 
       setStatus("confirming");
-      const confirmed = await connection.confirmTransaction(
-        { signature, blockhash, lastValidBlockHeight },
-        "confirmed",
+      const confirmResult = await pollSignatureConfirmation(
+        connection,
+        signature,
+        lastValidBlockHeight,
       );
-      if (confirmed.value.err) {
+      if (!confirmResult.ok) {
         setStatus("error");
-        setError(`tx failed on-chain: ${JSON.stringify(confirmed.value.err)}`);
+        setError(confirmResult.error);
         setTxSig(signature);
         return;
       }
