@@ -13,13 +13,22 @@ export const USDC_DECIMALS = 6;
 
 // Browser RPC. If NEXT_PUBLIC_SOLANA_RPC_URL is set we hit that endpoint
 // directly (e.g. a Helius URL the user is OK shipping in the bundle).
-// Otherwise we fall back to our server-side proxy at /api/solana/rpc, which
-// forwards to SOLANA_RPC_URL using the server-only key. The proxy path needs
-// to be absolute for @solana/web3.js Connection, so we prefix with the
-// configured app URL (defaulting to localhost in dev).
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-export const SOLANA_RPC_URL =
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || `${APP_URL}/api/solana/rpc`;
+// Otherwise resolveBrowserRpcUrl() returns our server-side proxy at
+// /api/solana/rpc, which forwards to SOLANA_RPC_URL using the server-only
+// key. We resolve at call time so the URL tracks window.location.origin
+// (works on localhost, preview deploys, prod) without needing extra env vars.
+export const SOLANA_PROXY_PATH = "/api/solana/rpc";
+
+export function resolveBrowserRpcUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+  if (explicit) return explicit;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}${SOLANA_PROXY_PATH}`;
+  }
+  // SSR fallback — never actually used by the wallet adapter (client-only),
+  // but Connection's constructor needs a parseable URL during render.
+  return `http://localhost:3000${SOLANA_PROXY_PATH}`;
+}
 
 // Server-side RPC. Defaults to the public mainnet endpoint, but production
 // should set SOLANA_RPC_URL to a Helius/QuickNode/Triton URL with an API key.

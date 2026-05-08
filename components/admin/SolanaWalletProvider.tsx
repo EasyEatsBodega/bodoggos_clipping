@@ -8,7 +8,7 @@ import {
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
 import "@solana/wallet-adapter-react-ui/styles.css";
-import { SOLANA_RPC_URL } from "@/lib/solana";
+import { resolveBrowserRpcUrl } from "@/lib/solana";
 
 // Backpack and most other modern Solana wallets implement the Wallet
 // Standard and are auto-detected by WalletProvider; only explicit
@@ -18,9 +18,10 @@ export function SolanaWalletProvider({ children }: { children: React.ReactNode }
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
     [],
   );
+  const endpoint = useMemo(() => resolveBrowserRpcUrl(), []);
 
   return (
-    <ConnectionProvider endpoint={SOLANA_RPC_URL}>
+    <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
