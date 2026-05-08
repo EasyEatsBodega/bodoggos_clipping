@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     .insert({
       slug: parsed.data.slug,
       label: parsed.data.label,
+      kind: parsed.data.kind ?? "topic",
       sort_order: parsed.data.sort_order ?? 0,
     })
     .select()

@@ -32,6 +32,7 @@ export default async function AdminTagsPage() {
     admin
       .from("clip_tags")
       .select("*")
+      .order("kind", { ascending: true })
       .order("sort_order", { ascending: true })
       .order("label", { ascending: true }),
     admin.from("clip_tag_assignments").select("clip_id, tag_id"),
@@ -93,6 +94,7 @@ export default async function AdminTagsPage() {
             <Table>
               <THead>
                 <TH>tag</TH>
+                <TH>kind</TH>
                 <TH>slug</TH>
                 <TH>clips</TH>
                 <TH>impressions</TH>
@@ -103,15 +105,19 @@ export default async function AdminTagsPage() {
               <TBody>
                 {(tags ?? []).map((t) => {
                   const s = stats.get(t.id) ?? emptyStats();
+                  const isCreator = t.kind === "creator";
                   return (
                     <TR key={t.id}>
                       <TD className="font-mono">
                         <Link
                           href={`/admin/clips?tag=${t.slug}` as never}
-                          className="hover:underline text-admin"
+                          className={`hover:underline ${isCreator ? "text-accent" : "text-admin"}`}
                         >
                           {t.label}
                         </Link>
+                      </TD>
+                      <TD className="font-mono text-[10px] uppercase tracking-widest text-text-2">
+                        {t.kind ?? "topic"}
                       </TD>
                       <TD className="font-mono text-xs text-text-2">{t.slug}</TD>
                       <TD className="num">{fmtInt(s.clips)}</TD>
@@ -133,7 +139,7 @@ export default async function AdminTagsPage() {
                 {(!tags || tags.length === 0) && (
                   <TR>
                     <TD className="text-text-3 font-mono text-sm">no tags yet</TD>
-                    <TD /><TD /><TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>

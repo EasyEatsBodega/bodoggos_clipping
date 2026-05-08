@@ -165,11 +165,15 @@ export default async function AdminClipsPage({
   for (const f of openFlags ?? []) {
     flagCount.set(f.clip_id, (flagCount.get(f.clip_id) ?? 0) + 1);
   }
-  const tagsByClip = new Map<string, string[]>();
+  const tagKindById = new Map(tags.map((t) => [t.id, t.kind] as const));
+  const creatorIdsByClip = new Map<string, string[]>();
+  const topicIdsByClip = new Map<string, string[]>();
   for (const a of assignments ?? []) {
-    const cur = tagsByClip.get(a.clip_id) ?? [];
+    const k = tagKindById.get(a.tag_id);
+    const target = k === "creator" ? creatorIdsByClip : topicIdsByClip;
+    const cur = target.get(a.clip_id) ?? [];
     cur.push(a.tag_id);
-    tagsByClip.set(a.clip_id, cur);
+    target.set(a.clip_id, cur);
   }
   const filtered = flagged ? clips.filter((c) => flagCount.has(c.id)) : clips;
 
@@ -242,31 +246,68 @@ export default async function AdminClipsPage({
           )}
         </div>
 
-        {tags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">tag:</span>
-            <a
-              href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
-              className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
-              style={!tagFilter ? { background: "var(--admin)" } : undefined}
-            >
-              all
-            </a>
-            {tags.map((t) => {
-              const on = tagFilter === t.slug;
-              return (
-                <a
-                  key={t.id}
-                  href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
-                  className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
-                  style={on ? { background: "var(--admin)" } : undefined}
-                >
-                  {t.label}
-                </a>
-              );
-            })}
-          </div>
-        )}
+        {(() => {
+          const creatorTags = tags.filter((t) => t.kind === "creator");
+          const topicTags = tags.filter((t) => t.kind !== "creator");
+          return (
+            <>
+              {creatorTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+                    creator:
+                  </span>
+                  <a
+                    href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
+                    className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
+                    style={!tagFilter ? { background: "var(--admin)" } : undefined}
+                  >
+                    all
+                  </a>
+                  {creatorTags.map((t) => {
+                    const on = tagFilter === t.slug;
+                    return (
+                      <a
+                        key={t.id}
+                        href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
+                        className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+                        style={on ? { background: "var(--admin)" } : undefined}
+                      >
+                        {t.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+              {topicTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+                    topic:
+                  </span>
+                  <a
+                    href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
+                    className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
+                    style={!tagFilter ? { background: "var(--admin)" } : undefined}
+                  >
+                    all
+                  </a>
+                  {topicTags.map((t) => {
+                    const on = tagFilter === t.slug;
+                    return (
+                      <a
+                        key={t.id}
+                        href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
+                        className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+                        style={on ? { background: "var(--admin)" } : undefined}
+                      >
+                        {t.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <div className="border border-border">
           <Table>
@@ -277,7 +318,8 @@ export default async function AdminClipsPage({
               <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
               <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
               <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
-              <TH>tags</TH>
+              <TH>creator</TH>
+              <TH>topic</TH>
               <TH />
               <TH />
               <TH />
@@ -327,7 +369,16 @@ export default async function AdminClipsPage({
                       <TagPicker
                         clipId={c.id}
                         allTags={tags}
-                        initialTagIds={tagsByClip.get(c.id) ?? []}
+                        initialTagIds={creatorIdsByClip.get(c.id) ?? []}
+                        kind="creator"
+                      />
+                    </TD>
+                    <TD>
+                      <TagPicker
+                        clipId={c.id}
+                        allTags={tags}
+                        initialTagIds={topicIdsByClip.get(c.id) ?? []}
+                        kind="topic"
                       />
                     </TD>
                     <TD>
@@ -348,7 +399,7 @@ export default async function AdminClipsPage({
               {filtered.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
