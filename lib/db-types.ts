@@ -56,6 +56,13 @@ export type Payout = {
   created_by: string | null;
 };
 
+export type PayoutClipMark = {
+  payout_id: string;
+  clip_id: string;
+  impressions_at_mark: number;
+  created_at: string;
+};
+
 export type Campaign = {
   id: string;
   name: string;

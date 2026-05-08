@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computePayoutAmount, computePayoutCents, sumNumeric } from "../payout-calc";
+import {
+  computePayoutAmount,
+  computePayoutCents,
+  computeRollingOwedCents,
+  latestMarksByClipId,
+  sumNumeric,
+} from "../payout-calc";
 
 describe("computePayoutCents", () => {
   it("zero impressions → 0", () => {
@@ -46,6 +52,84 @@ describe("computePayoutCents", () => {
 
   it("negative impressions still pay the flat fee", () => {
     expect(computePayoutCents(-100, 4, 75, 25)).toBe(2500);
+  });
+});
+
+describe("computeRollingOwedCents", () => {
+  const baseClip = {
+    cpm_rate_snapshot: "4",
+    max_payout_snapshot: "75",
+    flat_fee_snapshot: "0" as string | null,
+  };
+
+  it("no marks → owed equals total earned to date", () => {
+    const clips = [
+      { ...baseClip, id: "c1", status: "tracking" as const, impressions: 1000, final_impressions: null },
+      { ...baseClip, id: "c2", status: "completed" as const, impressions: 0, final_impressions: 5000 },
+    ];
+    // c1: 1000 * $4/1000 = $4. c2: 5000 * $4/1000 = $20. total $24 → 2400 cents.
+    expect(computeRollingOwedCents(clips, new Map())).toBe(2400);
+  });
+
+  it("mark at current impressions → owed is 0", () => {
+    const clips = [
+      { ...baseClip, id: "c1", status: "tracking" as const, impressions: 1000, final_impressions: null },
+    ];
+    expect(computeRollingOwedCents(clips, new Map([["c1", 1000]]))).toBe(0);
+  });
+
+  it("mark below current → owed is the delta only", () => {
+    const clips = [
+      { ...baseClip, id: "c1", status: "tracking" as const, impressions: 3000, final_impressions: null },
+    ];
+    // earned at 3000 = 1200, earned at 1000 = 400, delta = 800.
+    expect(computeRollingOwedCents(clips, new Map([["c1", 1000]]))).toBe(800);
+  });
+
+  it("rejected clips contribute zero", () => {
+    const clips = [
+      { ...baseClip, id: "c1", status: "rejected" as const, impressions: 50000, final_impressions: null },
+    ];
+    expect(computeRollingOwedCents(clips, new Map())).toBe(0);
+  });
+
+  it("CPM cap holds across mark and now → no extra owed past the cap", () => {
+    const clips = [
+      // Already past cap at the mark; new impressions don't add more.
+      { ...baseClip, id: "c1", status: "tracking" as const, impressions: 5_000_000, final_impressions: null },
+    ];
+    expect(computeRollingOwedCents(clips, new Map([["c1", 1_000_000]]))).toBe(0);
+  });
+
+  it("flat fee paid only on first payout, not double-counted", () => {
+    const clips = [
+      {
+        ...baseClip,
+        flat_fee_snapshot: "25" as string | null,
+        id: "c1",
+        status: "tracking" as const,
+        impressions: 2000,
+        final_impressions: null,
+      },
+    ];
+    // First payout, mark = 0 → owed = $25 + $8 = $33 → 3300.
+    expect(computeRollingOwedCents(clips, new Map())).toBe(3300);
+    // After mark at 2000, additional 1000 impressions → owed = $4 = 400.
+    const after = [{ ...clips[0], impressions: 3000 }];
+    expect(computeRollingOwedCents(after, new Map([["c1", 2000]]))).toBe(400);
+  });
+});
+
+describe("latestMarksByClipId", () => {
+  it("keeps the highest watermark per clip", () => {
+    const result = latestMarksByClipId([
+      { clip_id: "c1", impressions_at_mark: 1000 },
+      { clip_id: "c1", impressions_at_mark: 3000 },
+      { clip_id: "c1", impressions_at_mark: 2000 },
+      { clip_id: "c2", impressions_at_mark: 500 },
+    ]);
+    expect(result.get("c1")).toBe(3000);
+    expect(result.get("c2")).toBe(500);
   });
 });
 

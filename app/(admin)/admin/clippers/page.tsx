@@ -3,8 +3,9 @@ import { Header } from "@/components/Header";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
-import { computePayoutCents } from "@/lib/payout-calc";
+import { computePayoutCents, computeRollingOwedCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { RowPayButton } from "@/components/admin/RowPayButton";
 
 export const dynamic = "force-dynamic";
 
@@ -86,17 +87,25 @@ export default async function AdminClippersPage({
     );
   }
 
-  const [{ data: clippers }, { data: clips }, { data: payouts }, { data: openFlags }] =
-    await Promise.all([
-      clippersQ,
-      admin
-        .from("clips")
-        .select(
-          "clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
-        ),
-      admin.from("payouts").select("clipper_id, amount"),
-      admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
-    ]);
+  const [
+    { data: clippers },
+    { data: clips },
+    { data: payouts },
+    { data: openFlags },
+    { data: marks },
+  ] = await Promise.all([
+    clippersQ,
+    admin
+      .from("clips")
+      .select(
+        "id, clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+      ),
+    admin.from("payouts").select("clipper_id, amount"),
+    admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
+    admin
+      .from("payout_clip_marks")
+      .select("clip_id, impressions_at_mark"),
+  ]);
 
   const flagCount = new Map<string, number>();
   for (const f of openFlags ?? []) {
@@ -104,6 +113,10 @@ export default async function AdminClippersPage({
   }
 
   const stats = new Map<string, ClipperStats>();
+  // Group clips by clipper so we can compute rolling owed against marks.
+  const clipsByClipper = new Map<string, typeof clips>();
+  // Map every clip back to its clipper so we can attribute marks.
+  const clipToClipper = new Map<string, string>();
   for (const c of clips ?? []) {
     const cur = stats.get(c.clipper_id) ?? emptyStats();
     cur.clips++;
@@ -118,11 +131,31 @@ export default async function AdminClippersPage({
       );
     }
     stats.set(c.clipper_id, cur);
+    const arr = clipsByClipper.get(c.clipper_id) ?? [];
+    arr.push(c);
+    clipsByClipper.set(c.clipper_id, arr);
+    clipToClipper.set(c.id, c.clipper_id);
   }
   for (const p of payouts ?? []) {
     const cur = stats.get(p.clipper_id) ?? emptyStats();
     cur.paidCents += Math.round(Number(p.amount ?? 0) * 100);
     stats.set(p.clipper_id, cur);
+  }
+
+  // For each clipper, the latest impressions_at_mark per clip.
+  const marksByClipper = new Map<string, Map<string, number>>();
+  for (const m of marks ?? []) {
+    const clipperId = clipToClipper.get(m.clip_id);
+    if (!clipperId) continue;
+    let cm = marksByClipper.get(clipperId);
+    if (!cm) {
+      cm = new Map();
+      marksByClipper.set(clipperId, cm);
+    }
+    const cur = cm.get(m.clip_id);
+    if (cur == null || m.impressions_at_mark > cur) {
+      cm.set(m.clip_id, m.impressions_at_mark);
+    }
   }
 
   type Row = {
@@ -148,6 +181,11 @@ export default async function AdminClippersPage({
     })
     .map((c) => {
       const s = stats.get(c.id) ?? emptyStats();
+      const clipperClips = clipsByClipper.get(c.id) ?? [];
+      const owedCents = computeRollingOwedCents(
+        clipperClips,
+        marksByClipper.get(c.id) ?? new Map(),
+      );
       return {
         id: c.id,
         x_handle: c.x_handle,
@@ -159,7 +197,7 @@ export default async function AdminClippersPage({
         cpm_rate_override: c.cpm_rate_override,
         max_payout_override: c.max_payout_override,
         s,
-        out: Math.max(0, s.earnedCents - s.paidCents),
+        out: owedCents,
         flags: flagCount.get(c.id) ?? 0,
         hasOverride:
           Number(c.flat_fee_per_clip ?? 0) > 0 ||
@@ -246,8 +284,9 @@ export default async function AdminClippersPage({
               <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
               <SortTH base={baseParams} col="in_flight" sortCol={sortCol} sortDir={sortDir}>in-flight</SortTH>
               <SortTH base={baseParams} col="paid" sortCol={sortCol} sortDir={sortDir}>paid</SortTH>
-              <SortTH base={baseParams} col="outstanding" sortCol={sortCol} sortDir={sortDir}>outstanding</SortTH>
+              <SortTH base={baseParams} col="outstanding" sortCol={sortCol} sortDir={sortDir}>owed now</SortTH>
               <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
+              <TH>pay</TH>
             </THead>
             <TBody>
               {rows.map((r) => (
@@ -305,12 +344,20 @@ export default async function AdminClippersPage({
                       </span>
                     )}
                   </TD>
+                  <TD>
+                    <RowPayButton
+                      clipperId={r.id}
+                      handle={r.x_handle}
+                      recipientWallet={r.solana_wallet}
+                      owedCents={r.out}
+                    />
+                  </TD>
                 </TR>
               ))}
               {rows.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

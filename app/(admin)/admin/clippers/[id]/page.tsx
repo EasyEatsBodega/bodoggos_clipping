@@ -15,7 +15,12 @@ import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
 import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
 import { SolanaUsdcPayoutPanel } from "@/components/admin/SolanaUsdcPayoutPanel";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
+import {
+  sumNumeric,
+  computePayoutCents,
+  computeRollingOwedCents,
+  latestMarksByClipId,
+} from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +50,15 @@ export default async function AdminClipperDetailPage({
         .maybeSingle(),
     ]);
 
+  const clipIdsForMarks = (clips ?? []).map((c) => c.id);
+  const { data: clipMarks } = clipIdsForMarks.length
+    ? await admin
+        .from("payout_clip_marks")
+        .select("clip_id, impressions_at_mark")
+        .in("clip_id", clipIdsForMarks)
+    : { data: [] as Array<{ clip_id: string; impressions_at_mark: number }> };
+  const marksMap = latestMarksByClipId(clipMarks ?? []);
+
   const clipIds = (clips ?? []).map((c) => c.id);
   const { data: clipFlags } = clipIds.length
     ? await admin
@@ -65,11 +79,11 @@ export default async function AdminClipperDetailPage({
     clips?.reduce((s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0), 0) ?? 0;
   const earned = sumNumeric(clips?.map((c) => c.payout_amount) ?? []);
   const paid = sumNumeric(payouts?.map((p) => p.amount) ?? []);
-  const outstandingCents = Math.max(
-    0,
-    Math.round(Number(earned) * 100) - Math.round(Number(paid) * 100),
-  );
-  const outstanding = `${Math.floor(outstandingCents / 100)}.${(outstandingCents % 100)
+  // Rolling owed: total earnings (including in-flight at current views)
+  // minus what was implicitly paid via watermarks. This is the suggested
+  // amount for the next Solana payout.
+  const owedNowCents = computeRollingOwedCents(clips ?? [], marksMap);
+  const outstanding = `${Math.floor(owedNowCents / 100)}.${(owedNowCents % 100)
     .toString()
     .padStart(2, "0")}`;
 

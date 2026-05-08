@@ -3,6 +3,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { solanaPayoutConfirmSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
+import { snapshotClipMarks } from "@/lib/queries";
 import {
   USDC_DECIMALS,
   USDC_MINT,
@@ -141,22 +142,28 @@ export async function POST(req: Request) {
     );
   }
 
-  // Record the payout.
-  const { error: insErr } = await auth.admin.from("payouts").insert({
-    clipper_id: clipper.id,
-    amount: parsed.data.amount,
-    chain: "Solana",
-    tx_hash: parsed.data.signature,
-    note: parsed.data.note ?? null,
-    created_by: auth.user.id,
-  });
+  // Record the payout, then snapshot per-clip view watermarks so the next
+  // payment doesn't double-count impressions paid by this one.
+  const { data: inserted, error: insErr } = await auth.admin
+    .from("payouts")
+    .insert({
+      clipper_id: clipper.id,
+      amount: parsed.data.amount,
+      chain: "Solana",
+      tx_hash: parsed.data.signature,
+      note: parsed.data.note ?? null,
+      created_by: auth.user.id,
+    })
+    .select("id")
+    .single();
   if (insErr) {
     if (insErr.code === "23505") {
-      // Race: someone else just inserted this signature.
       return NextResponse.json({ ok: true, already_recorded: true });
     }
     return NextResponse.json({ error: insErr.message }, { status: 500 });
   }
+
+  await snapshotClipMarks(auth.admin, inserted.id, clipper.id);
 
   return NextResponse.json({ ok: true, signature: parsed.data.signature });
 }
