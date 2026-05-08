@@ -60,11 +60,16 @@ export const tagSchema = z.object({
     .max(40)
     .regex(/^[a-z0-9][a-z0-9_-]*$/, "lowercase letters, digits, dash, underscore"),
   label: z.string().min(1).max(60),
+  kind: z.enum(["topic", "creator"]).optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
 });
 
 export const setClipTagsSchema = z.object({
   tag_ids: z.array(z.string().uuid()).max(20),
+  // If kind is provided, only tags of that kind are replaced — other
+  // kinds on the clip are preserved. Used so the creator picker and the
+  // topic picker can save independently without clobbering each other.
+  kind: z.enum(["topic", "creator"]).optional(),
 });
 
 export const solanaPayoutConfirmSchema = z.object({

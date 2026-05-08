@@ -26,11 +26,29 @@ export async function PUT(
     return NextResponse.json({ error: "clip not found" }, { status: 404 });
   }
 
-  const { error: delErr } = await auth.admin
-    .from("clip_tag_assignments")
-    .delete()
-    .eq("clip_id", id);
-  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+  // If kind is scoped, only delete existing assignments of that kind so
+  // the other kind's assignments survive the partial replace.
+  if (parsed.data.kind) {
+    const { data: kindTags } = await auth.admin
+      .from("clip_tags")
+      .select("id")
+      .eq("kind", parsed.data.kind);
+    const kindTagIds = (kindTags ?? []).map((t) => t.id);
+    if (kindTagIds.length > 0) {
+      const { error: delErr } = await auth.admin
+        .from("clip_tag_assignments")
+        .delete()
+        .eq("clip_id", id)
+        .in("tag_id", kindTagIds);
+      if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+  } else {
+    const { error: delErr } = await auth.admin
+      .from("clip_tag_assignments")
+      .delete()
+      .eq("clip_id", id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+  }
 
   if (parsed.data.tag_ids.length > 0) {
     const rows = parsed.data.tag_ids.map((tag_id) => ({
