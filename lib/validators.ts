@@ -72,6 +72,11 @@ export const setClipTagsSchema = z.object({
   kind: z.enum(["topic", "creator"]).optional(),
 });
 
+export const createAdminSchema = z.object({
+  email: z.string().email().max(200),
+  password: z.string().min(8).max(72),
+});
+
 export const solanaPayoutConfirmSchema = z.object({
   clipper_id: z.string().uuid(),
   amount: z.number().positive(),
