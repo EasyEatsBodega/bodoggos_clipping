@@ -6,24 +6,133 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtUsd } from "@/lib/format";
 import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { OverviewCharts } from "@/components/admin/OverviewCharts";
+import {
+  bucketCount,
+  bucketSum,
+  cumulativeImpressions,
+} from "@/lib/chart-data";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminOverviewPage() {
+type DateRange = "7d" | "30d" | "90d" | "all";
+const VALID_RANGES: DateRange[] = ["7d", "30d", "90d", "all"];
+type StatusFilter = "tracking" | "completed" | "rejected";
+const VALID_STATUS: StatusFilter[] = ["tracking", "completed", "rejected"];
+
+export default async function AdminOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    range?: string;
+    creator?: string;
+    topic?: string;
+    status?: string;
+  }>;
+}) {
+  const sp = await searchParams;
+  const range = (VALID_RANGES as string[]).includes(sp.range ?? "")
+    ? (sp.range as DateRange)
+    : ("30d" as DateRange);
+  const creatorSlug = (sp.creator ?? "").trim() || undefined;
+  const topicSlug = (sp.topic ?? "").trim() || undefined;
+  const statusFilter = (VALID_STATUS as string[]).includes(sp.status ?? "")
+    ? (sp.status as StatusFilter)
+    : undefined;
+
   const admin = createSupabaseAdminClient();
 
-  const [{ data: clips }, { data: payouts }, { data: clippers }] = await Promise.all([
+  // Resolve the date window. "all" uses the earliest activity we can
+  // find so the x-axis still has a sensible left edge.
+  const now = new Date();
+  let start: Date;
+  if (range === "7d") start = daysAgo(now, 7);
+  else if (range === "30d") start = daysAgo(now, 30);
+  else if (range === "90d") start = daysAgo(now, 90);
+  else start = daysAgo(now, 365);
+
+  // Load tags first so we can resolve creator/topic filters to tag ids.
+  const { data: tags } = await admin
+    .from("clip_tags")
+    .select("id, slug, label, kind, sort_order");
+  const tagBySlug = new Map((tags ?? []).map((t) => [t.slug, t]));
+  const creatorTag = creatorSlug ? tagBySlug.get(creatorSlug) ?? null : null;
+  const topicTag = topicSlug ? tagBySlug.get(topicSlug) ?? null : null;
+  const filterTagIds = [creatorTag?.id, topicTag?.id].filter(
+    (x): x is string => !!x,
+  );
+
+  // Resolve the set of clip_ids that satisfy the (optional) tag filter.
+  // If both creator and topic are set, require *both* (AND semantics).
+  let allowedClipIds: Set<string> | null = null;
+  if (filterTagIds.length > 0) {
+    const { data: assigns } = await admin
+      .from("clip_tag_assignments")
+      .select("clip_id, tag_id")
+      .in("tag_id", filterTagIds);
+    const countByClip = new Map<string, number>();
+    for (const a of assigns ?? []) {
+      countByClip.set(a.clip_id, (countByClip.get(a.clip_id) ?? 0) + 1);
+    }
+    allowedClipIds = new Set();
+    for (const [clipId, count] of countByClip) {
+      if (count >= filterTagIds.length) allowedClipIds.add(clipId);
+    }
+    if (allowedClipIds.size === 0) {
+      // Sentinel so subsequent .in() queries return nothing rather than
+      // matching all rows.
+      allowedClipIds.add("00000000-0000-0000-0000-000000000000");
+    }
+  }
+
+  // Pull data within the window. We pull everything for the window (no
+  // server-side aggregation yet — table sizes are small).
+  let clipsQ = admin
+    .from("clips")
+    .select(
+      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+    );
+  if (statusFilter) clipsQ = clipsQ.eq("status", statusFilter);
+  if (allowedClipIds) clipsQ = clipsQ.in("id", Array.from(allowedClipIds));
+
+  // Submitted-within-range subset is filtered in-memory so we can also
+  // surface a "total" KPI across all time. Snapshots are pulled with a
+  // captured_at filter to keep the impressions chart workable.
+  const [
+    { data: clips },
+    { data: payouts },
+    { data: clippers },
+    { data: snapshots },
+  ] = await Promise.all([
+    clipsQ,
     admin
-      .from("clips")
-      .select(
-        "clipper_id, impressions, final_impressions, payout_amount, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
-      ),
-    admin.from("payouts").select("amount"),
-    admin.from("clippers").select("id, x_handle, banned"),
+      .from("payouts")
+      .select("amount, paid_at, clipper_id")
+      .gte("paid_at", start.toISOString()),
+    admin
+      .from("clippers")
+      .select("id, x_handle, banned, joined_at"),
+    admin
+      .from("clip_impression_snapshots")
+      .select("clip_id, impressions, captured_at")
+      .gte("captured_at", start.toISOString()),
   ]);
 
+  // For impressions-over-time we have to restrict snapshots to clips
+  // that match the current filter, otherwise the chart double-counts
+  // impressions from clips that don't belong to the filter.
+  const filteredClipIds = new Set((clips ?? []).map((c) => c.id));
+  const filteredSnapshots = (snapshots ?? []).filter((s) =>
+    filteredClipIds.has(s.clip_id),
+  );
+
+  // KPIs over the filtered clip set (regardless of submitted_at window
+  // — KPIs represent the cumulative state of the matching clips).
   const totalImpressions =
-    clips?.reduce((s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0), 0) ?? 0;
+    clips?.reduce(
+      (s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0),
+      0,
+    ) ?? 0;
   const totalSpend = sumNumeric(clips?.map((c) => c.payout_amount) ?? []);
   const totalPaid = sumNumeric(payouts?.map((p) => p.amount) ?? []);
   const outstandingCents = Math.max(
@@ -33,7 +142,6 @@ export default async function AdminOverviewPage() {
   const outstanding = `${Math.floor(outstandingCents / 100)}.${(outstandingCents % 100)
     .toString()
     .padStart(2, "0")}`;
-
   const inFlightCents = (clips ?? [])
     .filter((c) => c.status === "tracking")
     .reduce(
@@ -54,10 +162,41 @@ export default async function AdminOverviewPage() {
   const potentialOwed = `${Math.floor(potentialOwedCents / 100)}.${(potentialOwedCents % 100)
     .toString()
     .padStart(2, "0")}`;
-
   const activeClippers = clippers?.filter((c) => !c.banned).length ?? 0;
 
-  // Leaderboard
+  // Chart series.
+  const clipsSubmittedSeries = bucketCount(
+    (clips ?? []).filter(
+      (c) =>
+        c.submitted_at &&
+        new Date(c.submitted_at).getTime() >= start.getTime(),
+    ),
+    (c) => c.submitted_at,
+    start,
+    now,
+  );
+  const payoutsSeries = bucketSum(
+    payouts ?? [],
+    (p) => p.paid_at,
+    (p) => p.amount,
+    start,
+    now,
+  );
+  const newClippersSeries = bucketCount(
+    (clippers ?? []).filter(
+      (c) => c.joined_at && new Date(c.joined_at).getTime() >= start.getTime(),
+    ),
+    (c) => c.joined_at,
+    start,
+    now,
+  );
+  const impressionsSeries = cumulativeImpressions(
+    filteredSnapshots,
+    start,
+    now,
+  );
+
+  // Leaderboards.
   const byClipper = new Map<string, { impressions: number; earned: number }>();
   for (const c of clips ?? []) {
     const cur = byClipper.get(c.clipper_id) ?? { impressions: 0, earned: 0 };
@@ -66,10 +205,28 @@ export default async function AdminOverviewPage() {
     byClipper.set(c.clipper_id, cur);
   }
   const handles = new Map(clippers?.map((c) => [c.id, c.x_handle]) ?? []);
-  const leaderboard = Array.from(byClipper.entries())
+  const topClippers = Array.from(byClipper.entries())
     .map(([id, v]) => ({ id, handle: handles.get(id) ?? "—", ...v }))
     .sort((a, b) => b.impressions - a.impressions)
     .slice(0, 10);
+
+  const topClips = (clips ?? [])
+    .map((c) => ({
+      id: c.id,
+      url: c.url,
+      clipperId: c.clipper_id,
+      handle: handles.get(c.clipper_id) ?? "—",
+      impressions: Number(c.final_impressions ?? c.impressions ?? 0),
+      earnedCents: Math.round(Number(c.payout_amount ?? 0) * 100),
+      status: c.status as string,
+    }))
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 10);
+
+  const creatorTags = (tags ?? []).filter((t) => t.kind === "creator");
+  const topicTags = (tags ?? []).filter((t) => t.kind !== "creator");
+
+  const baseParams = { range, creator: creatorSlug, topic: topicSlug, status: statusFilter };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -80,6 +237,56 @@ export default async function AdminOverviewPage() {
       />
       <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
+        {/* Filter bar */}
+        <div className="flex flex-col gap-3">
+          <FilterRow
+            label="range"
+            base={baseParams}
+            param="range"
+            value={range}
+            options={[
+              { value: "7d", label: "7d" },
+              { value: "30d", label: "30d" },
+              { value: "90d", label: "90d" },
+              { value: "all", label: "all" },
+            ]}
+            defaultValue="30d"
+            allowClear={false}
+          />
+          {creatorTags.length > 0 && (
+            <FilterRow
+              label="creator"
+              base={baseParams}
+              param="creator"
+              value={creatorSlug}
+              options={creatorTags.map((t) => ({ value: t.slug, label: t.label }))}
+              allowClear
+            />
+          )}
+          {topicTags.length > 0 && (
+            <FilterRow
+              label="topic"
+              base={baseParams}
+              param="topic"
+              value={topicSlug}
+              options={topicTags.map((t) => ({ value: t.slug, label: t.label }))}
+              allowClear
+            />
+          )}
+          <FilterRow
+            label="status"
+            base={baseParams}
+            param="status"
+            value={statusFilter}
+            options={[
+              { value: "tracking", label: "tracking" },
+              { value: "completed", label: "completed" },
+              { value: "rejected", label: "rejected" },
+            ]}
+            allowClear
+          />
+        </div>
+
         <StatGrid>
           <StatCell label="impressions" value={fmtInt(totalImpressions)} />
           <StatCell label="spend (earned)" value={fmtUsd(totalSpend)} accent="admin" />
@@ -103,7 +310,7 @@ export default async function AdminOverviewPage() {
 
         <StatGrid>
           <StatCell label="clippers (active)" value={fmtInt(activeClippers)} />
-          <StatCell label="clips total" value={fmtInt(clips?.length ?? 0)} />
+          <StatCell label="clips (filter)" value={fmtInt(clips?.length ?? 0)} />
           <StatCell
             label="tracking"
             value={fmtInt(clips?.filter((c) => c.status === "tracking").length ?? 0)}
@@ -116,45 +323,181 @@ export default async function AdminOverviewPage() {
           />
         </StatGrid>
 
-        <section className="flex flex-col gap-3">
-          <h2 className="label">leaderboard / top 10</h2>
-          <div className="border border-border">
-            <Table>
-              <THead>
-                <TH>#</TH>
-                <TH>handle</TH>
-                <TH>impressions</TH>
-                <TH>earned</TH>
-              </THead>
-              <TBody>
-                {leaderboard.map((row, i) => (
-                  <TR key={row.id}>
-                    <TD className="font-mono text-text-3">{i + 1}</TD>
-                    <TD className="font-mono">
-                      <Link
-                        href={`/admin/clippers/${row.id}` as never}
-                        className="hover:underline"
-                      >
-                        @{row.handle}
-                      </Link>
-                    </TD>
-                    <TD className="num">{fmtInt(row.impressions)}</TD>
-                    <TD className="num">{fmtUsd((row.earned / 100).toFixed(2))}</TD>
-                  </TR>
-                ))}
-                {leaderboard.length === 0 && (
-                  <TR>
-                    <TD className="text-text-3 font-mono text-sm" >no data yet</TD>
-                    <TD />
-                    <TD />
-                    <TD />
-                  </TR>
-                )}
-              </TBody>
-            </Table>
-          </div>
-        </section>
+        <OverviewCharts
+          impressions={impressionsSeries}
+          clipsSubmitted={clipsSubmittedSeries}
+          payoutsPerDay={payoutsSeries}
+          newClippersPerDay={newClippersSeries}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <section className="flex flex-col gap-3">
+            <h2 className="label">top clippers</h2>
+            <div className="border border-border">
+              <Table>
+                <THead>
+                  <TH>#</TH>
+                  <TH>handle</TH>
+                  <TH>impressions</TH>
+                  <TH>earned</TH>
+                </THead>
+                <TBody>
+                  {topClippers.map((row, i) => (
+                    <TR key={row.id}>
+                      <TD className="font-mono text-text-3">{i + 1}</TD>
+                      <TD className="font-mono">
+                        <Link
+                          href={`/admin/clippers/${row.id}` as never}
+                          className="hover:underline"
+                        >
+                          @{row.handle}
+                        </Link>
+                      </TD>
+                      <TD className="num">{fmtInt(row.impressions)}</TD>
+                      <TD className="num">{fmtUsd((row.earned / 100).toFixed(2))}</TD>
+                    </TR>
+                  ))}
+                  {topClippers.length === 0 && (
+                    <TR>
+                      <TD className="text-text-3 font-mono text-sm">no data</TD>
+                      <TD /><TD /><TD />
+                    </TR>
+                  )}
+                </TBody>
+              </Table>
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className="label">top clips</h2>
+            <div className="border border-border">
+              <Table>
+                <THead>
+                  <TH>#</TH>
+                  <TH>clipper</TH>
+                  <TH>tweet</TH>
+                  <TH>impressions</TH>
+                  <TH>earned</TH>
+                </THead>
+                <TBody>
+                  {topClips.map((row, i) => (
+                    <TR key={row.id}>
+                      <TD className="font-mono text-text-3">{i + 1}</TD>
+                      <TD className="font-mono text-xs">
+                        <Link
+                          href={`/admin/clippers/${row.clipperId}` as never}
+                          className="hover:underline"
+                        >
+                          @{row.handle}
+                        </Link>
+                      </TD>
+                      <TD className="font-mono text-xs text-text-2 max-w-[200px] truncate">
+                        <a
+                          href={row.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                        >
+                          {row.url}
+                        </a>
+                      </TD>
+                      <TD className="num">{fmtInt(row.impressions)}</TD>
+                      <TD className="num">
+                        {row.earnedCents > 0
+                          ? fmtUsd((row.earnedCents / 100).toFixed(2))
+                          : "—"}
+                      </TD>
+                    </TR>
+                  ))}
+                  {topClips.length === 0 && (
+                    <TR>
+                      <TD className="text-text-3 font-mono text-sm">no data</TD>
+                      <TD /><TD /><TD /><TD />
+                    </TR>
+                  )}
+                </TBody>
+              </Table>
+            </div>
+          </section>
+        </div>
       </main>
+    </div>
+  );
+}
+
+function daysAgo(now: Date, n: number): Date {
+  const d = new Date(now);
+  d.setUTCDate(d.getUTCDate() - n);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+type BaseParams = {
+  range: DateRange;
+  creator: string | undefined;
+  topic: string | undefined;
+  status: StatusFilter | undefined;
+};
+
+function buildHref(
+  base: BaseParams,
+  param: keyof BaseParams,
+  value: string | undefined,
+): string {
+  const next = { ...base, [param]: value };
+  const params = new URLSearchParams();
+  if (next.range && next.range !== "30d") params.set("range", next.range);
+  if (next.creator) params.set("creator", next.creator);
+  if (next.topic) params.set("topic", next.topic);
+  if (next.status) params.set("status", next.status);
+  const qs = params.toString();
+  return qs ? `/admin?${qs}` : "/admin";
+}
+
+function FilterRow({
+  label,
+  base,
+  param,
+  value,
+  options,
+  defaultValue,
+  allowClear,
+}: {
+  label: string;
+  base: BaseParams;
+  param: "range" | "creator" | "topic" | "status";
+  value: string | undefined;
+  options: Array<{ value: string; label: string }>;
+  defaultValue?: string;
+  allowClear: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-text-3 w-20">
+        {label}:
+      </span>
+      {allowClear && (
+        <a
+          href={buildHref(base, param, undefined)}
+          className={`btn ${!value ? "btn-primary" : "btn-ghost"}`}
+          style={!value ? { background: "var(--admin)" } : undefined}
+        >
+          all
+        </a>
+      )}
+      {options.map((opt) => {
+        const on = (value ?? defaultValue) === opt.value;
+        return (
+          <a
+            key={opt.value}
+            href={buildHref(base, param, on && allowClear ? undefined : opt.value)}
+            className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+            style={on ? { background: "var(--admin)" } : undefined}
+          >
+            {opt.label}
+          </a>
+        );
+      })}
     </div>
   );
 }
