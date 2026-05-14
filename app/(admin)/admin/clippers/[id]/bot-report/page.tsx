@@ -100,7 +100,6 @@ export default async function ClipperBotReportPage({
             accent="admin"
           />
           <StatCell label="payouts withheld" value="excluded" hint="not counted toward USDC payouts" />
-          <StatCell label="metrics" value="counted" hint="still appears in totals & charts" />
         </StatGrid>
 
         <section className="flex flex-col gap-3">
