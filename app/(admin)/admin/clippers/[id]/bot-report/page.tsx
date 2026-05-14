@@ -83,16 +83,15 @@ export default async function ClipperBotReportPage({
           </div>
         </div>
 
-        <div className="border border-border p-4 bg-surface text-sm font-mono text-text-2 leading-relaxed">
+        <div className="border border-border p-4 bg-surface text-sm font-mono text-text-2 leading-relaxed print:text-xs print:p-3">
           The clips listed below have been flagged for suspected engagement
           farming / bot-driven views. They remain in the system and continue
           to count toward overall campaign metrics, but{" "}
           <span className="text-danger">are not paid out</span> to the
-          clipper while the flag is in place. Reasons reflect admin review
-          notes captured at the time of marking.
+          clipper while the flag is in place.
         </div>
 
-        <StatGrid>
+        <div className="bg-border grid grid-cols-1 md:grid-cols-3 gap-px">
           <StatCell label="flagged clips" value={fmtInt(clips.length)} accent="admin" />
           <StatCell
             label="excluded impressions"
@@ -100,35 +99,41 @@ export default async function ClipperBotReportPage({
             accent="admin"
           />
           <StatCell label="payouts withheld" value="excluded" hint="not counted toward USDC payouts" />
-        </StatGrid>
+        </div>
 
         <section className="flex flex-col gap-3">
           <h2 className="label">flagged clips</h2>
-          <div className="border border-border">
-            <Table>
+          <div className="border border-border overflow-x-auto">
+            <table className="w-full border-collapse table-fixed text-xs">
+              <colgroup>
+                <col style={{ width: "40px" }} />
+                <col />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "100px" }} />
+              </colgroup>
               <THead>
                 <TH>#</TH>
                 <TH>clip</TH>
-                <TH>impressions</TH>
+                <TH className="text-right">impressions</TH>
                 <TH>status</TH>
                 <TH>submitted</TH>
-                <TH>flagged</TH>
               </THead>
               <TBody>
                 {clips.map((c, i) => (
                   <TR key={c.id}>
                     <TD className="font-mono text-text-3">{i + 1}</TD>
-                    <TD className="font-mono text-xs max-w-[320px] truncate">
+                    <TD className="font-mono text-xs">
                       <a
                         href={c.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:underline text-text"
+                        className="hover:underline text-text break-all"
                       >
-                        {c.url}
+                        {shortenTweetUrl(c.url)}
                       </a>
                     </TD>
-                    <TD className="num">
+                    <TD className="num text-right">
                       {fmtInt(c.final_impressions ?? c.impressions ?? 0)}
                     </TD>
                     <TD className="font-mono text-[10px] uppercase tracking-widest text-text-2">
@@ -136,9 +141,6 @@ export default async function ClipperBotReportPage({
                     </TD>
                     <TD className="font-mono text-xs text-text-2">
                       {fmtRelative(c.submitted_at)}
-                    </TD>
-                    <TD className="font-mono text-xs text-text-2">
-                      {c.botting_marked_at ? fmtRelative(c.botting_marked_at) : "—"}
                     </TD>
                   </TR>
                 ))}
@@ -148,11 +150,11 @@ export default async function ClipperBotReportPage({
                       no clips marked as suspected engagement farming for
                       this clipper.
                     </TD>
-                    <TD /><TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>
-            </Table>
+            </table>
           </div>
         </section>
 
@@ -163,5 +165,24 @@ export default async function ClipperBotReportPage({
       </main>
     </div>
   );
+}
+
+// Tweets look like https://x.com/<handle>/status/<tweet_id>. The full
+// URL eats too much horizontal space in the printed table — show
+// "@<handle> · 12345…" instead so the column stays narrow.
+function shortenTweetUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const m = u.pathname.match(/^\/([^/]+)\/status\/(\d+)/);
+    if (m) {
+      const handle = m[1];
+      const id = m[2];
+      const tail = id.length > 6 ? `${id.slice(0, 4)}…${id.slice(-3)}` : id;
+      return `@${handle} · ${tail}`;
+    }
+    return u.host + u.pathname;
+  } catch {
+    return url;
+  }
 }
 

@@ -35,16 +35,36 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
                     rejected: {c.rejected_reason}
                   </div>
                 )}
+                {c.botting_suspected && (
+                  <div className="text-danger text-[10px] mt-1 normal-case">
+                    flagged for review · not counted for payout
+                  </div>
+                )}
               </TD>
               <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
               <TD className="num">
                 {fmtInt(c.final_impressions ?? c.impressions)}
               </TD>
               <TD className="num">
-                {c.payout_amount ? fmtUsd(c.payout_amount) : <span className="text-text-3">—</span>}
+                {c.botting_suspected ? (
+                  <span
+                    className="text-danger font-mono text-[10px] uppercase tracking-widest"
+                    title="flagged for review · not counted for payout"
+                  >
+                    excluded
+                  </span>
+                ) : c.payout_amount ? (
+                  fmtUsd(c.payout_amount)
+                ) : (
+                  <span className="text-text-3">—</span>
+                )}
               </TD>
               <TD>
-                <StatusPill status={c.status} reason={c.rejected_reason} />
+                <StatusPill
+                  status={c.status}
+                  reason={c.rejected_reason}
+                  flagged={c.botting_suspected}
+                />
               </TD>
               <TD className="font-mono text-xs text-text-2">
                 {c.status === "tracking" ? fmtCountdown(c.tracking_until) : "—"}
@@ -68,7 +88,15 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
   );
 }
 
-function StatusPill({ status, reason }: { status: Clip["status"]; reason: string | null }) {
+function StatusPill({
+  status,
+  reason,
+  flagged,
+}: {
+  status: Clip["status"];
+  reason: string | null;
+  flagged?: boolean;
+}) {
   const cls =
     status === "tracking"
       ? "text-accent"
@@ -76,8 +104,18 @@ function StatusPill({ status, reason }: { status: Clip["status"]; reason: string
       ? "text-text"
       : "text-danger";
   return (
-    <span className={`font-mono text-[10px] uppercase tracking-widest ${cls}`} title={reason ?? undefined}>
-      {status}
-    </span>
+    <div className="flex flex-col gap-1">
+      <span className={`font-mono text-[10px] uppercase tracking-widest ${cls}`} title={reason ?? undefined}>
+        {status}
+      </span>
+      {flagged && (
+        <span
+          className="font-mono text-[10px] uppercase tracking-widest text-danger"
+          title="flagged for review · not counted for payout"
+        >
+          flagged
+        </span>
+      )}
+    </div>
   );
 }

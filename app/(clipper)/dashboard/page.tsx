@@ -47,6 +47,12 @@ export default async function DashboardPage() {
     clipper.cpm_rate_override != null ||
     clipper.max_payout_override != null;
 
+  const flaggedClips = (clips ?? []).filter((c) => c.botting_suspected);
+  const flaggedImpressions = flaggedClips.reduce(
+    (s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0),
+    0,
+  );
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
@@ -58,6 +64,20 @@ export default async function DashboardPage() {
       />
       <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
+        {flaggedClips.length > 0 && (
+          <div
+            className="border px-4 py-3 flex flex-col gap-1"
+            style={{ borderColor: "var(--danger)", background: "rgba(255, 89, 89, 0.08)" }}
+          >
+            <p className="font-mono text-xs text-text-2">
+              <span className="text-danger">// {flaggedClips.length} clip{flaggedClips.length === 1 ? "" : "s"} flagged for review —</span>{" "}
+              {fmtInt(flaggedImpressions)} impression{flaggedImpressions === 1 ? "" : "s"} are
+              not being counted toward your payouts. flagged clips are
+              tagged below.
+            </p>
+          </div>
+        )}
+
         {!clipper.solana_wallet && (
           <div
             className="border px-4 py-3 flex items-center justify-between gap-4"

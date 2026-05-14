@@ -356,12 +356,27 @@ export default async function AdminClipsPage({
                     </TD>
                     <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
                     <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
-                    <TD className="num">{c.payout_amount ? fmtUsd(c.payout_amount) : "—"}</TD>
+                    <TD className="num">
+                      {c.botting_suspected ? (
+                        <span className="text-danger" title={c.botting_reason ?? ""}>
+                          excluded
+                        </span>
+                      ) : c.payout_amount ? (
+                        fmtUsd(c.payout_amount)
+                      ) : (
+                        "—"
+                      )}
+                    </TD>
                     <TD className="font-mono text-[10px] uppercase tracking-widest">
                       {c.status}
                       {fc > 0 && (
                         <span className="ml-2 text-admin" title={`${fc} open flag${fc === 1 ? "" : "s"}`}>
                           ⚑{fc > 1 ? fc : ""}
+                        </span>
+                      )}
+                      {c.botting_suspected && (
+                        <span className="ml-2 text-danger" title={c.botting_reason ?? "suspected engagement farming"}>
+                          botting
                         </span>
                       )}
                     </TD>

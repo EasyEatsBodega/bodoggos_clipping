@@ -61,6 +61,20 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
           </span>
         </div>
 
+        {clip.botting_suspected && (
+          <div
+            className="border px-4 py-3"
+            style={{ borderColor: "var(--danger)", background: "rgba(255, 89, 89, 0.08)" }}
+          >
+            <p className="font-mono text-xs text-text-2">
+              <span className="text-danger">// flagged for review —</span> this
+              clip is not currently being counted toward your payouts.
+              impressions still appear in your totals. reach out if you have
+              questions.
+            </p>
+          </div>
+        )}
+
         <StatGrid>
           <StatCell label="status" value={clip.status} accent={clip.status === "rejected" ? "danger" : "accent"} />
           <StatCell label="impressions" value={fmtInt(clip.final_impressions ?? clip.impressions)} />
@@ -69,9 +83,19 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
             value={clip.status === "tracking" ? fmtCountdown(clip.tracking_until) : "—"}
           />
           <StatCell
-            label={clip.status === "completed" ? "earned" : "estimated"}
-            value={fmtUsd(clip.payout_amount ?? estimatePayout(clip))}
-            accent="accent"
+            label={
+              clip.botting_suspected
+                ? "payout"
+                : clip.status === "completed"
+                ? "earned"
+                : "estimated"
+            }
+            value={
+              clip.botting_suspected
+                ? "excluded"
+                : fmtUsd(clip.payout_amount ?? estimatePayout(clip))
+            }
+            accent={clip.botting_suspected ? "danger" : "accent"}
           />
         </StatGrid>
 
