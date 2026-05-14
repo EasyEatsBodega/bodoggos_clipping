@@ -25,7 +25,7 @@ async function handle(req: Request) {
   const { data: clips, error } = await admin
     .from("clips")
     .select(
-      "id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+      "id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, botting_suspected",
     )
     .eq("status", "tracking")
     .lte("tracking_until", now.toISOString())
@@ -65,12 +65,14 @@ async function handle(req: Request) {
       // fall through with last known impressions
     }
 
-    const payoutAmount = computePayoutAmount(
-      impressions,
-      clip.cpm_rate_snapshot,
-      clip.max_payout_snapshot,
-      clip.flat_fee_snapshot ?? 0,
-    );
+    const payoutAmount = clip.botting_suspected
+      ? "0.00"
+      : computePayoutAmount(
+          impressions,
+          clip.cpm_rate_snapshot,
+          clip.max_payout_snapshot,
+          clip.flat_fee_snapshot ?? 0,
+        );
 
     await admin
       .from("clips")

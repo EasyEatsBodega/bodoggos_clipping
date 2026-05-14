@@ -90,7 +90,7 @@ export default async function AdminOverviewPage({
   let clipsQ = admin
     .from("clips")
     .select(
-      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, botting_suspected",
     );
   if (statusFilter) clipsQ = clipsQ.eq("status", statusFilter);
   if (allowedClipIds) clipsQ = clipsQ.in("id", Array.from(allowedClipIds));
@@ -143,7 +143,7 @@ export default async function AdminOverviewPage({
     .toString()
     .padStart(2, "0")}`;
   const inFlightCents = (clips ?? [])
-    .filter((c) => c.status === "tracking")
+    .filter((c) => c.status === "tracking" && !c.botting_suspected)
     .reduce(
       (s, c) =>
         s +
