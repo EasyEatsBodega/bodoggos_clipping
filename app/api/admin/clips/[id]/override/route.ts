@@ -19,7 +19,9 @@ export async function POST(
 
   const { data: clip, error: getErr } = await auth.admin
     .from("clips")
-    .select("id, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot")
+    .select(
+      "id, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, botting_suspected",
+    )
     .eq("id", id)
     .maybeSingle();
   if (getErr || !clip) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -39,12 +41,14 @@ export async function POST(
   };
   if (clip.status === "completed") {
     baseUpdate.final_impressions = parsed.data.impressions;
-    baseUpdate.payout_amount = computePayoutAmount(
-      parsed.data.impressions,
-      clip.cpm_rate_snapshot,
-      clip.max_payout_snapshot,
-      clip.flat_fee_snapshot ?? 0,
-    );
+    baseUpdate.payout_amount = clip.botting_suspected
+      ? "0.00"
+      : computePayoutAmount(
+          parsed.data.impressions,
+          clip.cpm_rate_snapshot,
+          clip.max_payout_snapshot,
+          clip.flat_fee_snapshot ?? 0,
+        );
   }
 
   const { error: upErr } = await auth.admin.from("clips").update(baseUpdate).eq("id", id);

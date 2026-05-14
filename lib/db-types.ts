@@ -35,6 +35,10 @@ export type Clip = {
   max_payout_snapshot: string;
   flat_fee_snapshot: string;
   x_author_id: string | null;
+  botting_suspected: boolean;
+  botting_reason: string | null;
+  botting_marked_at: string | null;
+  botting_marked_by: string | null;
 };
 
 export type ClipSnapshot = {

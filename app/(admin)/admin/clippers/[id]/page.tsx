@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
@@ -12,6 +13,7 @@ import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
 import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
+import { BottingButton } from "@/components/admin/BottingButton";
 import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
 import { SolanaUsdcPayoutPanel } from "@/components/admin/SolanaUsdcPayoutPanel";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -88,7 +90,7 @@ export default async function AdminClipperDetailPage({
     .padStart(2, "0")}`;
 
   const inFlightCents = (clips ?? [])
-    .filter((c) => c.status === "tracking")
+    .filter((c) => c.status === "tracking" && !c.botting_suspected)
     .reduce(
       (s, c) =>
         s +
@@ -131,6 +133,12 @@ export default async function AdminClipperDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href={`/admin/clippers/${clipper.id}/bot-report` as never}
+              className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
+            >
+              bot report →
+            </Link>
             <FlagButton target="clipper" id={clipper.id} flagged={openClipperFlagCount > 0} />
             <BanToggle clipperId={clipper.id} initial={clipper.banned} />
             <DeleteClipperButton clipperId={clipper.id} handle={clipper.x_handle} />
@@ -256,6 +264,7 @@ export default async function AdminClipperDetailPage({
                 <TH />
                 <TH />
                 <TH />
+                <TH />
               </THead>
               <TBody>
                 {(clips ?? []).map((c) => {
@@ -274,7 +283,17 @@ export default async function AdminClipperDetailPage({
                       </TD>
                       <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
                       <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
-                      <TD className="num">{c.payout_amount ? fmtUsd(c.payout_amount) : "—"}</TD>
+                      <TD className="num">
+                        {c.botting_suspected ? (
+                          <span className="text-danger" title={c.botting_reason ?? ""}>
+                            excluded
+                          </span>
+                        ) : c.payout_amount ? (
+                          fmtUsd(c.payout_amount)
+                        ) : (
+                          "—"
+                        )}
+                      </TD>
                       <TD className="font-mono text-[10px] uppercase tracking-widest">
                         {c.status}
                         {fc > 0 && (
@@ -282,6 +301,21 @@ export default async function AdminClipperDetailPage({
                             ⚑{fc > 1 ? fc : ""}
                           </span>
                         )}
+                        {c.botting_suspected && (
+                          <span
+                            className="ml-2 text-danger"
+                            title={c.botting_reason ?? "suspected engagement farming"}
+                          >
+                            botting
+                          </span>
+                        )}
+                      </TD>
+                      <TD>
+                        <BottingButton
+                          clipId={c.id}
+                          suspected={c.botting_suspected}
+                          currentReason={c.botting_reason}
+                        />
                       </TD>
                       <TD>
                         <FlagButton target="clip" id={c.id} flagged={fc > 0} />

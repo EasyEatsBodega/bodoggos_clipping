@@ -52,10 +52,14 @@ type ClipForOwed = {
   cpm_rate_snapshot: string | number;
   max_payout_snapshot: string | number;
   flat_fee_snapshot: string | number | null;
+  botting_suspected?: boolean | null;
 };
 
 export function billableImpressions(c: ClipForOwed): number {
   if (c.status === "rejected") return 0;
+  // Clips flagged as suspected engagement farming stay in the system but
+  // do not contribute to payouts.
+  if (c.botting_suspected) return 0;
   if (c.status === "completed") return Number(c.final_impressions ?? c.impressions ?? 0);
   return Number(c.impressions ?? 0);
 }
@@ -77,6 +81,7 @@ export function computeRollingOwedCents(
   let total = 0;
   for (const c of clips) {
     if (c.status === "rejected") continue;
+    if (c.botting_suspected) continue;
     const nowImpressions = billableImpressions(c);
     const earnedNow = computePayoutCents(
       nowImpressions,
