@@ -128,9 +128,9 @@ export default async function ClipperBotReportPage({
                         href={c.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:underline text-text break-all"
+                        className="underline text-accent break-all print:text-blue-700 print:underline"
                       >
-                        {shortenTweetUrl(c.url)}
+                        {shortenTweetUrl(c.url)} ↗
                       </a>
                     </TD>
                     <TD className="num text-right">
