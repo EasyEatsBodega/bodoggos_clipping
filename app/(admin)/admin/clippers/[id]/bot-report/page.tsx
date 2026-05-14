@@ -113,7 +113,6 @@ export default async function ClipperBotReportPage({
                 <TH>status</TH>
                 <TH>submitted</TH>
                 <TH>flagged</TH>
-                <TH>reason</TH>
               </THead>
               <TBody>
                 {clips.map((c, i) => (
@@ -141,9 +140,6 @@ export default async function ClipperBotReportPage({
                     <TD className="font-mono text-xs text-text-2">
                       {c.botting_marked_at ? fmtRelative(c.botting_marked_at) : "—"}
                     </TD>
-                    <TD className="font-mono text-xs text-text-2 max-w-[360px] whitespace-pre-wrap break-words">
-                      {c.botting_reason ?? "—"}
-                    </TD>
                   </TR>
                 ))}
                 {clips.length === 0 && (
@@ -152,7 +148,7 @@ export default async function ClipperBotReportPage({
                       no clips marked as suspected engagement farming for
                       this clipper.
                     </TD>
-                    <TD /><TD /><TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>
