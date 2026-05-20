@@ -1,9 +1,68 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { billableImpressions, sumNumeric } from "./payout-calc";
+import { billableImpressions, computePayoutAmount, sumNumeric } from "./payout-calc";
 
-export async function getActiveCampaign(supabase: SupabaseClient) {
-  const { data } = await supabase.from("campaigns").select("*").eq("active", true).maybeSingle();
-  return data;
+// Returns every campaign that is admin-flagged active AND inside its date
+// window (if one is set). Sorted newest-first so freshly created campaigns
+// surface to clippers immediately.
+export async function getActiveCampaigns(supabase: SupabaseClient) {
+  const nowIso = new Date().toISOString();
+  const { data } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("active", true)
+    .or(`starts_at.is.null,starts_at.lte.${nowIso}`)
+    .or(`ends_at.is.null,ends_at.gte.${nowIso}`)
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
+// True if campaign is admin-active AND current time is inside any configured
+// start/end window. Used by clip-submit + enrollment endpoints.
+export function isCampaignOpen(campaign: {
+  active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+}): boolean {
+  if (!campaign.active) return false;
+  const now = Date.now();
+  if (campaign.starts_at && new Date(campaign.starts_at).getTime() > now) return false;
+  if (campaign.ends_at && new Date(campaign.ends_at).getTime() < now) return false;
+  return true;
+}
+
+// Sums the dollar value already "spent" on a campaign, counting completed
+// clips at their finalized payout_amount and tracking clips at their current
+// projected payout (impressions × cpm capped at max). Used to enforce
+// budget_usd at submit time.
+export async function getCampaignSpend(
+  supabase: SupabaseClient,
+  campaignId: string,
+): Promise<number> {
+  const { data: clips } = await supabase
+    .from("clips")
+    .select(
+      "status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+    )
+    .eq("campaign_id", campaignId)
+    .neq("status", "rejected");
+  if (!clips || clips.length === 0) return 0;
+  let total = 0;
+  for (const c of clips) {
+    if (c.payout_amount != null) {
+      total += Number(c.payout_amount);
+      continue;
+    }
+    const imps = Number(c.final_impressions ?? c.impressions ?? 0);
+    total += Number(
+      computePayoutAmount(
+        imps,
+        Number(c.cpm_rate_snapshot ?? 0),
+        Number(c.max_payout_snapshot ?? 0),
+        Number(c.flat_fee_snapshot ?? 0),
+      ),
+    );
+  }
+  return total;
 }
 
 export type ClipperKpis = {

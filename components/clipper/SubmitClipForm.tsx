@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 
-export function SubmitClipForm() {
+export function SubmitClipForm({
+  campaignId,
+  campaignName,
+}: {
+  campaignId: string;
+  campaignName: string;
+}) {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [state, setState] = useState<"idle" | "submitting">("idle");
@@ -19,7 +25,7 @@ export function SubmitClipForm() {
     const res = await fetch("/api/clips", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, campaign_id: campaignId }),
     });
     const json = await res.json();
     setState("idle");
@@ -35,7 +41,7 @@ export function SubmitClipForm() {
   return (
     <form onSubmit={submit} className="border border-border p-5 flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
-        <span className="label">submit clip</span>
+        <span className="label">submit clip · {campaignName}</span>
         <span className="font-mono text-[10px] text-text-3">
           paste an x.com / status / id link from your handle
         </span>

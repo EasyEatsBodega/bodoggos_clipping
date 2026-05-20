@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const submitClipSchema = z.object({
   url: z.string().min(1).max(500),
+  campaign_id: z.string().uuid(),
 });
 
 export const banSchema = z.object({
@@ -105,10 +106,27 @@ export const payOverridesSchema = z.object({
   apply_to_existing: z.boolean().optional(),
 });
 
+const isoDateString = z.string().datetime({ offset: true });
+
+export const campaignSlugSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits, dashes only");
+
 export const campaignConfigSchema = z.object({
   name: z.string().min(1).max(100),
   cpm_rate: z.number().positive(),
   max_payout_per_clip: z.number().positive(),
   tracking_days: z.number().int().min(1).max(90),
   active: z.boolean(),
+  description: z.string().max(500).nullable().optional(),
+  brief_url: z.string().url().max(500).nullable().optional(),
+  starts_at: isoDateString.nullable().optional(),
+  ends_at: isoDateString.nullable().optional(),
+  budget_usd: z.number().positive().max(10_000_000).nullable().optional(),
+});
+
+export const createCampaignSchema = campaignConfigSchema.extend({
+  slug: campaignSlugSchema,
 });

@@ -69,12 +69,24 @@ export type PayoutClipMark = {
 
 export type Campaign = {
   id: string;
+  slug: string;
   name: string;
   cpm_rate: string;
   max_payout_per_clip: string;
   tracking_days: number;
   active: boolean;
   created_at: string;
+  description: string | null;
+  brief_url: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  budget_usd: string | null;
+};
+
+export type CampaignEnrollment = {
+  clipper_id: string;
+  campaign_id: string;
+  enrolled_at: string;
 };
 
 export type ClipperFlag = {
