@@ -99,6 +99,15 @@ export type ClipFlag = {
   resolution: string | null;
 };
 
+export type ClipperAltHandle = {
+  id: string;
+  clipper_id: string;
+  x_handle: string;
+  note: string | null;
+  added_by: string | null;
+  added_at: string;
+};
+
 export type ClipTag = {
   id: string;
   slug: string;

@@ -82,7 +82,17 @@ export async function POST(req: Request) {
   if (lookup.deleted) {
     return NextResponse.json({ error: "this tweet is unavailable or deleted" }, { status: 400 });
   }
-  if (lookup.authorUsername.toLowerCase() !== clipper.x_handle.toLowerCase()) {
+  const tweetAuthor = lookup.authorUsername.toLowerCase();
+  const primaryHandle = clipper.x_handle.toLowerCase();
+  let allowed = tweetAuthor === primaryHandle;
+  if (!allowed) {
+    const { data: altHandles } = await admin
+      .from("clipper_alt_handles")
+      .select("x_handle")
+      .eq("clipper_id", user.id);
+    allowed = (altHandles ?? []).some((h) => h.x_handle === tweetAuthor);
+  }
+  if (!allowed) {
     return NextResponse.json(
       {
         error: `this post is from @${lookup.authorUsername} but your linked handle is @${clipper.x_handle}`,

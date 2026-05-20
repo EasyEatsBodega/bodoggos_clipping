@@ -46,6 +46,16 @@ export const onboardingSchema = z.object({
     .regex(/^[A-Za-z0-9_]+$/, "Letters, numbers, and underscore only"),
 });
 
+export const altHandleSchema = z.object({
+  x_handle: z
+    .string()
+    .trim()
+    .min(1)
+    .max(15)
+    .regex(/^[A-Za-z0-9_]+$/, "Letters, numbers, and underscore only"),
+  note: z.string().max(200).optional(),
+});
+
 export const walletSchema = z.object({
   solana_wallet: z
     .string()

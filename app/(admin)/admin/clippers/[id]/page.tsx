@@ -14,6 +14,7 @@ import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
 import { BottingButton } from "@/components/admin/BottingButton";
+import { AltHandlesPanel } from "@/components/admin/AltHandlesPanel";
 import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
 import { SolanaUsdcPayoutPanel } from "@/components/admin/SolanaUsdcPayoutPanel";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -36,21 +37,31 @@ export default async function AdminClipperDetailPage({
   const { data: clipper } = await admin.from("clippers").select("*").eq("id", id).maybeSingle();
   if (!clipper) notFound();
 
-  const [{ data: clips }, { data: payouts }, { data: clipperFlags }, { data: campaign }] =
-    await Promise.all([
-      admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
-      admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
-      admin
-        .from("clipper_flags")
-        .select("*")
-        .eq("clipper_id", id)
-        .order("flagged_at", { ascending: false }),
-      admin
-        .from("campaigns")
-        .select("cpm_rate, max_payout_per_clip")
-        .eq("active", true)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: clips },
+    { data: payouts },
+    { data: clipperFlags },
+    { data: campaign },
+    { data: altHandles },
+  ] = await Promise.all([
+    admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
+    admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
+    admin
+      .from("clipper_flags")
+      .select("*")
+      .eq("clipper_id", id)
+      .order("flagged_at", { ascending: false }),
+    admin
+      .from("campaigns")
+      .select("cpm_rate, max_payout_per_clip")
+      .eq("active", true)
+      .maybeSingle(),
+    admin
+      .from("clipper_alt_handles")
+      .select("id, x_handle, note, added_at")
+      .eq("clipper_id", id)
+      .order("added_at", { ascending: true }),
+  ]);
 
   const clipIdsForMarks = (clips ?? []).map((c) => c.id);
   const { data: clipMarks } = clipIdsForMarks.length
@@ -170,6 +181,12 @@ export default async function AdminClipperDetailPage({
             completedClipCount={(clips ?? []).filter((c) => c.status === "completed").length}
           />
         )}
+
+        <AltHandlesPanel
+          clipperId={clipper.id}
+          primaryHandle={clipper.x_handle}
+          handles={altHandles ?? []}
+        />
 
         <SolanaUsdcPayoutPanel
           clipperId={clipper.id}
