@@ -101,16 +101,19 @@ export function bucketSum<T>(
   return dateRange(start, end, g).map((date) => ({ date, value: sums.get(date) ?? 0 }));
 }
 
-// Cumulative impressions across a clip's snapshots, bucketed at the given
-// granularity. For each bucket b in the range, value = sum across clips of
-// (max snapshot.impressions captured on or before the end of b). Produces a
-// monotonically non-decreasing growth curve. Snapshots captured before the
-// range start fold into the first bucket, so clips that finalized earlier
-// still contribute their impressions to the base.
+// Cumulative impressions across clips, bucketed at the given granularity,
+// reconstructed from IN-WINDOW snapshots plus the live current total.
 //
-// nowTotal, if provided, overrides the final bucket with the live current
-// total (e.g. the sum of each clip's current impression count) so the right
-// edge reflects this moment rather than the latest stored snapshot.
+// We deliberately do NOT require the full snapshot history (that table grows
+// unbounded with hourly polling and scanning it on every page load times
+// out). Instead: each clip's growth *within the window* is (latest in-window
+// snapshot - earliest in-window snapshot). The window-start base is then
+// nowTotal - (sum of in-window growth), so the curve starts at the true
+// total-at-window-start, climbs with in-window snapshots, and ends exactly at
+// nowTotal (the current live total). Clips with no in-window snapshot simply
+// sit in the base.
+//
+// If nowTotal is omitted the curve is relative (starts at 0) — still monotonic.
 export function cumulativeImpressions(
   snapshots: Array<{ clip_id: string; impressions: number; captured_at: string }>,
   start: Date,
@@ -122,24 +125,34 @@ export function cumulativeImpressions(
     (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime(),
   );
 
+  // Per-clip earliest (baseline) and latest in-window value.
+  const baseline = new Map<string, number>();
+  const finalVal = new Map<string, number>();
+  for (const s of sorted) {
+    if (!baseline.has(s.clip_id)) baseline.set(s.clip_id, s.impressions);
+    finalVal.set(s.clip_id, Math.max(finalVal.get(s.clip_id) ?? 0, s.impressions));
+  }
+  let totalGrowth = 0;
+  for (const [clip, fin] of finalVal) totalGrowth += fin - (baseline.get(clip) ?? 0);
+  const baseTotal = Math.max(0, (nowTotal ?? totalGrowth) - totalGrowth);
+
   const buckets = dateRange(start, end, g);
-  // Running latest-snapshot-per-clip view.
-  const latestByClip = new Map<string, number>();
+  const latest = new Map<string, number>(); // running latest per clip, seeded to baseline
   let cursor = 0;
+  let growthSoFar = 0;
   const out: DailyPoint[] = [];
 
   for (const key of buckets) {
     const endMs = bucketEndMs(key, g);
     while (cursor < sorted.length && new Date(sorted[cursor].captured_at).getTime() <= endMs) {
       const s = sorted[cursor++];
-      const prev = latestByClip.get(s.clip_id) ?? 0;
-      // Snapshots should be monotonically increasing, but guard against
-      // any retraction noise by taking the max.
-      if (s.impressions > prev) latestByClip.set(s.clip_id, s.impressions);
+      const base = baseline.get(s.clip_id) ?? s.impressions;
+      const prev = latest.get(s.clip_id) ?? base;
+      const next = Math.max(prev, s.impressions);
+      growthSoFar += next - prev;
+      latest.set(s.clip_id, next);
     }
-    let total = 0;
-    for (const v of latestByClip.values()) total += v;
-    out.push({ date: key, value: total });
+    out.push({ date: key, value: baseTotal + growthSoFar });
   }
 
   if (nowTotal != null && out.length > 0) {

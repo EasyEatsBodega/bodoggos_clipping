@@ -114,19 +114,20 @@ export default async function AdminOverviewPage({
     );
   }
 
-  // Submitted-within-range subset is filtered in-memory so we can also
-  // surface a "total" KPI across all time. We pull the FULL snapshot
-  // history (no captured_at floor): cumulativeImpressions folds every
-  // snapshot before `start` into the day-one base, so the curve reflects
-  // the true running total — clips that finalized before the window still
-  // count, and the right edge matches the impressions KPI.
+  // Snapshots are bounded to the selected window — the snapshots table grows
+  // unbounded with hourly polling, so scanning all of it on every load times
+  // out. cumulativeImpressions reconstructs the running total from in-window
+  // growth plus the live total (totalImpressions), so the curve is still a
+  // correct cumulative ending at the current total.
   const [{ data: clips }, { data: clippers }, { data: snapshots }] =
     await Promise.all([
       clipsQ,
       admin.from("clippers").select("id, x_handle, banned, joined_at"),
       admin
         .from("clip_impression_snapshots")
-        .select("clip_id, impressions, captured_at"),
+        .select("clip_id, impressions, captured_at")
+        .gte("captured_at", start.toISOString())
+        .order("captured_at", { ascending: true }),
     ]);
 
   // For impressions-over-time we have to restrict snapshots to clips
