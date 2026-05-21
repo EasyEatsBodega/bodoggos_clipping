@@ -98,10 +98,10 @@ export default async function AdminCampaignsPage() {
                               ? "text-accent"
                               : c.active
                                 ? "text-text-3"
-                                : "text-text-3"
+                                : "text-admin"
                           }
                         >
-                          {open ? "open" : c.active ? "scheduled" : "inactive"}
+                          {open ? "live" : c.active ? "scheduled" : "draft"}
                         </span>
                       </td>
                       <td className="p-3 text-right">{fmtUsd(c.cpm_rate)}</td>

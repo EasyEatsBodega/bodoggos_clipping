@@ -20,8 +20,8 @@ export default function NewCampaignPage() {
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
         <h1 className="label">new campaign</h1>
         <p className="font-mono text-xs text-text-2 max-w-2xl">
-          Once created, share the campaign link with clippers — they'll enroll themselves before
-          submitting.
+          Saved as a draft by default — only admins can see it until you publish. Edit freely,
+          then hit Publish on the campaign page when it's ready for clippers.
         </p>
         <CampaignForm mode="create" />
       </main>

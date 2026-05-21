@@ -34,7 +34,7 @@ export function CampaignForm(props: Props) {
     cpm_rate: c ? Number(c.cpm_rate) : 4,
     max_payout_per_clip: c ? Number(c.max_payout_per_clip) : 75,
     tracking_days: c?.tracking_days ?? 7,
-    active: c?.active ?? true,
+    active: c?.active ?? false,
     starts_at: toLocalInput(c?.starts_at ?? null),
     ends_at: toLocalInput(c?.ends_at ?? null),
     budget_usd: c?.budget_usd != null ? Number(c.budget_usd) : "",
@@ -191,17 +191,29 @@ export function CampaignForm(props: Props) {
           onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
         />
       </div>
-      <label className="flex items-center gap-2 font-mono text-xs">
+      <label className="flex items-start gap-2 font-mono text-xs">
         <input
           type="checkbox"
+          className="mt-[2px]"
           checked={form.active}
           onChange={(e) => setForm({ ...form, active: e.target.checked })}
         />
-        active (visible to clippers)
+        <span className="flex flex-col gap-0.5">
+          <span>publish to clippers</span>
+          <span className="text-text-3">
+            unchecked = draft, visible only to admins until you publish
+          </span>
+        </span>
       </label>
       <div className="flex items-center gap-3">
         <Button variant="primary" type="submit" disabled={busy}>
-          {busy ? "Saving…" : editing ? "Save" : "Create campaign"}
+          {busy
+            ? "Saving…"
+            : editing
+              ? "Save"
+              : form.active
+                ? "Create & publish"
+                : "Save as draft"}
         </Button>
         {ok && editing && <span className="font-mono text-xs text-accent">saved</span>}
         {error && <span className="font-mono text-xs text-danger">{error}</span>}

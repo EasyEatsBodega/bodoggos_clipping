@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import { Header } from "@/components/Header";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { CampaignForm } from "@/components/admin/CampaignForm";
+import { PublishCampaignButton } from "@/components/admin/PublishCampaignButton";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getCampaignSpend } from "@/lib/queries";
+import { getCampaignSpend, isCampaignOpen } from "@/lib/queries";
 import { fmtUsd } from "@/lib/format";
 import type { Campaign } from "@/lib/db-types";
 
@@ -45,9 +46,29 @@ export default async function EditCampaignPage({
       />
       <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="font-mono text-xl">{campaign.name}</h1>
-          <p className="font-mono text-xs text-text-3">slug: {campaign.slug}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-baseline gap-3">
+              <h1 className="font-mono text-xl">{campaign.name}</h1>
+              <span
+                className={`font-mono text-[10px] uppercase tracking-widest ${
+                  isCampaignOpen(campaign)
+                    ? "text-accent"
+                    : campaign.active
+                      ? "text-text-3"
+                      : "text-admin"
+                }`}
+              >
+                {isCampaignOpen(campaign)
+                  ? "live"
+                  : campaign.active
+                    ? "scheduled"
+                    : "draft"}
+              </span>
+            </div>
+            <p className="font-mono text-xs text-text-3">slug: {campaign.slug}</p>
+          </div>
+          <PublishCampaignButton campaignId={campaign.id} active={campaign.active} />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border border-border p-4 font-mono text-xs">

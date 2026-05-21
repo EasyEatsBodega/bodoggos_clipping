@@ -38,15 +38,21 @@ export default async function ClipperCampaignDetailPage({
     .maybeSingle<Campaign>();
   if (!campaign) notFound();
 
+  const { data: enrollment } = await supabase
+    .from("campaign_enrollments")
+    .select("clipper_id")
+    .eq("clipper_id", user.id)
+    .eq("campaign_id", campaign.id)
+    .maybeSingle();
+
+  // Drafts are admin-only. A clipper who was already enrolled (campaign got
+  // unpublished after they joined) still gets the page so they see the
+  // closed banner — otherwise it would look like the campaign vanished.
+  if (!campaign.active && !enrollment) notFound();
+
   const open = isCampaignOpen(campaign);
 
-  const [{ data: enrollment }, { data: clips }, spent] = await Promise.all([
-    supabase
-      .from("campaign_enrollments")
-      .select("clipper_id")
-      .eq("clipper_id", user.id)
-      .eq("campaign_id", campaign.id)
-      .maybeSingle(),
+  const [{ data: clips }, spent] = await Promise.all([
     supabase
       .from("clips")
       .select("*")
