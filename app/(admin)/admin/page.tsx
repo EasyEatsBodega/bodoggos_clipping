@@ -114,21 +114,16 @@ export default async function AdminOverviewPage({
     );
   }
 
-  // Snapshots are bounded to the selected window — the snapshots table grows
-  // unbounded with hourly polling, so scanning all of it on every load times
-  // out. cumulativeImpressions reconstructs the running total from in-window
-  // growth plus the live total (totalImpressions), so the curve is still a
-  // correct cumulative ending at the current total.
-  const [{ data: clips }, { data: clippers }, { data: snapshots }] =
-    await Promise.all([
-      clipsQ,
-      admin.from("clippers").select("id, x_handle, banned, joined_at"),
-      admin
-        .from("clip_impression_snapshots")
-        .select("clip_id, impressions, captured_at")
-        .gte("captured_at", start.toISOString())
-        .order("captured_at", { ascending: true }),
-    ]);
+  // Snapshots are bounded to the selected window AND paged through in full:
+  // PostgREST caps each response at 1000 rows, so a single query would return
+  // only the oldest 1000 in-window snapshots and flatten the curve. Paging
+  // gathers every in-window snapshot so cumulativeImpressions sees the real
+  // growth. Bounded by window so we never scan the whole (unbounded) table.
+  const [{ data: clips }, { data: clippers }, snapshots] = await Promise.all([
+    clipsQ,
+    admin.from("clippers").select("id, x_handle, banned, joined_at"),
+    fetchWindowSnapshots(admin, start.toISOString()),
+  ]);
 
   // For impressions-over-time we have to restrict snapshots to clips
   // that match the current filter, otherwise the chart double-counts
@@ -407,6 +402,31 @@ function hoursAgo(now: Date, n: number): Date {
   const d = new Date(now);
   d.setUTCHours(d.getUTCHours() - n, 0, 0, 0);
   return d;
+}
+
+type SnapshotRow = { clip_id: string; impressions: number; captured_at: string };
+
+// Pages through every in-window snapshot. PostgREST caps each response at
+// 1000 rows, so we walk .range() windows until a short page signals the end.
+// A hard ceiling guards against pathological table sizes.
+async function fetchWindowSnapshots(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  startIso: string,
+): Promise<SnapshotRow[]> {
+  const pageSize = 1000;
+  const out: SnapshotRow[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from("clip_impression_snapshots")
+      .select("clip_id, impressions, captured_at")
+      .gte("captured_at", startIso)
+      .order("captured_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error || !data || data.length === 0) break;
+    out.push(...(data as SnapshotRow[]));
+    if (data.length < pageSize || out.length >= 200_000) break;
+  }
+  return out;
 }
 
 type BaseParams = {
