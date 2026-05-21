@@ -11,7 +11,7 @@ const LINKS = [
   { href: "/admin/flags", label: "flags" },
   { href: "/admin/payouts", label: "payouts" },
   { href: "/admin/admins", label: "admins" },
-  { href: "/admin/config", label: "config" },
+  { href: "/admin/campaigns", label: "campaigns" },
 ] as const;
 
 export function AdminNav() {

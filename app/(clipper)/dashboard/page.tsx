@@ -2,13 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
-import { SubmitClipForm } from "@/components/clipper/SubmitClipForm";
 import { ClipsTable } from "@/components/clipper/ClipsTable";
 import { ClipperNav } from "@/components/clipper/ClipperNav";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getClipperKpis } from "@/lib/queries";
+import { getActiveCampaigns, getClipperKpis } from "@/lib/queries";
 import { fmtInt, fmtUsd } from "@/lib/format";
-import type { Clip } from "@/lib/db-types";
+import type { Campaign, Clip } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,33 +24,31 @@ export default async function DashboardPage() {
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
 
-  const [{ data: clips }, kpis, { data: campaign }] = await Promise.all([
+  const [{ data: clips }, kpis, campaigns, { data: enrollments }] = await Promise.all([
     supabase
       .from("clips")
       .select("*")
       .eq("clipper_id", user.id)
       .order("submitted_at", { ascending: false }),
     getClipperKpis(supabase, user.id),
-    supabase
-      .from("campaigns")
-      .select("cpm_rate, max_payout_per_clip")
-      .eq("active", true)
-      .maybeSingle(),
+    getActiveCampaigns(supabase) as Promise<Campaign[]>,
+    supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
   ]);
 
-  const effectiveCpm = Number(clipper.cpm_rate_override ?? campaign?.cpm_rate ?? 0);
-  const effectiveMax = Number(clipper.max_payout_override ?? campaign?.max_payout_per_clip ?? 0);
-  const effectiveFlat = Number(clipper.flat_fee_per_clip ?? 0);
-  const hasCustomDeal =
-    effectiveFlat > 0 ||
-    clipper.cpm_rate_override != null ||
-    clipper.max_payout_override != null;
+  const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
+  const enrolledCampaigns = campaigns.filter((c) => enrolledIds.has(c.id));
+  const unenrolledCount = campaigns.length - enrolledCampaigns.length;
 
   const flaggedClips = (clips ?? []).filter((c) => c.botting_suspected);
   const flaggedImpressions = flaggedClips.reduce(
     (s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0),
     0,
   );
+
+  const hasCustomDeal =
+    Number(clipper.flat_fee_per_clip ?? 0) > 0 ||
+    clipper.cpm_rate_override != null ||
+    clipper.max_payout_override != null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -107,22 +104,68 @@ export default async function DashboardPage() {
           />
         </StatGrid>
 
-        {campaign && (
+        {hasCustomDeal && (
           <p className="font-mono text-xs text-text-2">
-            <span className="text-text-3">// your rate: </span>
-            {effectiveFlat > 0 && <>${effectiveFlat.toFixed(2)} per clip + </>}${
-              effectiveCpm.toFixed(2)
-            } per 1k impressions, capped at ${effectiveMax.toFixed(2)} per clip
-            {hasCustomDeal && (
-              <span className="text-admin"> · custom deal</span>
-            )}
+            <span className="text-admin">// custom deal —</span> your per-clipper override
+            replaces the campaign defaults on every clip you submit.
           </p>
         )}
 
-        <SubmitClipForm />
+        <section className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="label">campaigns</h2>
+            <Link
+              href={"/dashboard/campaigns" as never}
+              className="font-mono text-[10px] uppercase tracking-widest text-accent hover:underline"
+            >
+              browse all →
+            </Link>
+          </div>
+          {enrolledCampaigns.length === 0 ? (
+            <div className="border border-border p-5 flex flex-col gap-2">
+              <p className="font-mono text-xs text-text-2">
+                {campaigns.length === 0
+                  ? "No active campaigns right now. Check back soon."
+                  : "You're not enrolled in any campaign yet. Pick one to start submitting clips."}
+              </p>
+              {campaigns.length > 0 && (
+                <Link
+                  href={"/dashboard/campaigns" as never}
+                  className="font-mono text-xs text-accent hover:underline"
+                >
+                  see {campaigns.length} active campaign{campaigns.length === 1 ? "" : "s"} →
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {enrolledCampaigns.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/dashboard/campaigns/${c.id}` as never}
+                  className="border border-border hover:border-accent p-4 flex flex-col gap-1 transition-colors"
+                >
+                  <span className="font-mono text-sm">{c.name}</span>
+                  <span className="font-mono text-[11px] text-text-3">
+                    {fmtUsd(c.cpm_rate)} cpm · cap {fmtUsd(c.max_payout_per_clip)} ·{" "}
+                    {c.tracking_days}d tracking
+                  </span>
+                </Link>
+              ))}
+              {unenrolledCount > 0 && (
+                <Link
+                  href={"/dashboard/campaigns" as never}
+                  className="border border-dashed border-border hover:border-accent p-4 flex items-center justify-center font-mono text-xs text-text-2 hover:text-accent transition-colors"
+                >
+                  + {unenrolledCount} more campaign{unenrolledCount === 1 ? "" : "s"} available
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="label">clips</h2>
+          <h2 className="label">all your clips</h2>
           <ClipsTable clips={(clips ?? []) as Clip[]} />
         </section>
       </main>

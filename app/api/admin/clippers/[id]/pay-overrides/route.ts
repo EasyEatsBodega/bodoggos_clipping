@@ -33,28 +33,45 @@ export async function POST(
 
   // Backfill: rewrite snapshots on every existing clip for this clipper, and
   // recompute payout_amount for completed clips against final_impressions.
-  const { data: campaign, error: campErr } = await auth.admin
-    .from("campaigns")
-    .select("cpm_rate, max_payout_per_clip")
-    .eq("active", true)
-    .maybeSingle();
-  if (campErr || !campaign) {
-    return NextResponse.json({ error: "no active campaign for backfill" }, { status: 500 });
-  }
-
-  const effectiveCpm = parsed.data.cpm_rate_override ?? campaign.cpm_rate;
-  const effectiveMax = parsed.data.max_payout_override ?? campaign.max_payout_per_clip;
-  const effectiveFlat = parsed.data.flat_fee_per_clip;
-
+  // Each clip's snapshot is reset to (override ?? its-own-campaign-default),
+  // so a clipper with clips across multiple campaigns keeps the correct
+  // per-campaign rate where there's no override.
   const { data: clips, error: clipsErr } = await auth.admin
     .from("clips")
-    .select("id, status, impressions, final_impressions")
+    .select("id, status, impressions, final_impressions, campaign_id")
     .eq("clipper_id", id);
   if (clipsErr) return NextResponse.json({ error: clipsErr.message }, { status: 500 });
+
+  // Look up per-campaign defaults once, keyed by campaign_id, so each clip
+  // can fall back to its own campaign's rate when the override is null.
+  const campaignIds = Array.from(
+    new Set((clips ?? []).map((c) => c.campaign_id)),
+  );
+  const campaignDefaults = new Map<string, { cpm_rate: string; max_payout_per_clip: string }>();
+  if (campaignIds.length > 0) {
+    const { data: camps, error: campsErr } = await auth.admin
+      .from("campaigns")
+      .select("id, cpm_rate, max_payout_per_clip")
+      .in("id", campaignIds);
+    if (campsErr) return NextResponse.json({ error: campsErr.message }, { status: 500 });
+    for (const c of camps ?? []) {
+      campaignDefaults.set(c.id, {
+        cpm_rate: c.cpm_rate,
+        max_payout_per_clip: c.max_payout_per_clip,
+      });
+    }
+  }
 
   let backfilled = 0;
   let recomputed = 0;
   for (const c of clips ?? []) {
+    const defaults = campaignDefaults.get(c.campaign_id);
+    const campCpm = defaults?.cpm_rate ?? 0;
+    const campMax = defaults?.max_payout_per_clip ?? 0;
+    const effectiveCpm = parsed.data.cpm_rate_override ?? campCpm;
+    const effectiveMax = parsed.data.max_payout_override ?? campMax;
+    const effectiveFlat = parsed.data.flat_fee_per_clip;
+
     const update: Record<string, unknown> = {
       cpm_rate_snapshot: effectiveCpm,
       max_payout_snapshot: effectiveMax,

@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { submitClipSchema } from "@/lib/validators";
 import { parseTweetUrl } from "@/lib/url-canonicalizer";
 import { getXProvider } from "@/lib/x-provider";
+import { getCampaignSpend, isCampaignOpen } from "@/lib/queries";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -50,14 +51,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "this tweet has already been submitted" }, { status: 409 });
   }
 
-  // Active campaign
+  // Target campaign — must exist, be open, and clipper must be enrolled
   const { data: campaign, error: campaignErr } = await admin
     .from("campaigns")
     .select("*")
-    .eq("active", true)
+    .eq("id", parsed.data.campaign_id)
     .maybeSingle();
   if (campaignErr || !campaign) {
-    return NextResponse.json({ error: "no active campaign" }, { status: 500 });
+    return NextResponse.json({ error: "campaign not found" }, { status: 404 });
+  }
+  if (!isCampaignOpen(campaign)) {
+    return NextResponse.json({ error: "this campaign is not currently accepting clips" }, { status: 400 });
+  }
+
+  const { data: enrollment } = await admin
+    .from("campaign_enrollments")
+    .select("clipper_id")
+    .eq("clipper_id", user.id)
+    .eq("campaign_id", campaign.id)
+    .maybeSingle();
+  if (!enrollment) {
+    return NextResponse.json(
+      { error: "you need to enroll in this campaign before submitting" },
+      { status: 403 },
+    );
+  }
+
+  // Budget cap — reject new submissions once total spend hits budget_usd
+  if (campaign.budget_usd != null) {
+    const spent = await getCampaignSpend(admin, campaign.id);
+    if (spent >= Number(campaign.budget_usd)) {
+      return NextResponse.json(
+        { error: "this campaign's budget is fully allocated" },
+        { status: 400 },
+      );
+    }
   }
 
   // Verify with X

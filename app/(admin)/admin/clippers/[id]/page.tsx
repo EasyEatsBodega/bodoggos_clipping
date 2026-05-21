@@ -51,10 +51,15 @@ export default async function AdminClipperDetailPage({
       .select("*")
       .eq("clipper_id", id)
       .order("flagged_at", { ascending: false }),
+    // Defaults shown on the pay-override form. With multiple active
+    // campaigns we surface the newest one as a sensible hint — the override
+    // applies globally to this clipper regardless of which campaign.
     admin
       .from("campaigns")
       .select("cpm_rate, max_payout_per_clip")
       .eq("active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle(),
     admin
       .from("clipper_alt_handles")
