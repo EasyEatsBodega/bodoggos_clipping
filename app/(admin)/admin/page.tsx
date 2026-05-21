@@ -3,15 +3,10 @@ import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { fmtInt, fmtUsd } from "@/lib/format";
-import { sumNumeric, computePayoutCents } from "@/lib/payout-calc";
+import { fmtInt } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { OverviewCharts } from "@/components/admin/OverviewCharts";
-import {
-  bucketCount,
-  bucketSum,
-  cumulativeImpressions,
-} from "@/lib/chart-data";
+import { bucketCount, cumulativeImpressions } from "@/lib/chart-data";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +23,7 @@ export default async function AdminOverviewPage({
     creator?: string;
     topic?: string;
     status?: string;
+    campaign?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -36,6 +32,7 @@ export default async function AdminOverviewPage({
     : ("30d" as DateRange);
   const creatorSlug = (sp.creator ?? "").trim() || undefined;
   const topicSlug = (sp.topic ?? "").trim() || undefined;
+  const campaignSlug = (sp.campaign ?? "").trim() || undefined;
   const statusFilter = (VALID_STATUS as string[]).includes(sp.status ?? "")
     ? (sp.status as StatusFilter)
     : undefined;
@@ -51,13 +48,20 @@ export default async function AdminOverviewPage({
   else if (range === "90d") start = daysAgo(now, 90);
   else start = daysAgo(now, 365);
 
-  // Load tags first so we can resolve creator/topic filters to tag ids.
-  const { data: tags } = await admin
-    .from("clip_tags")
-    .select("id, slug, label, kind, sort_order");
+  // Load tags + campaigns first so we can resolve filters to ids.
+  const [{ data: tags }, { data: campaigns }] = await Promise.all([
+    admin.from("clip_tags").select("id, slug, label, kind, sort_order"),
+    admin
+      .from("campaigns")
+      .select("id, slug, name")
+      .order("created_at", { ascending: false }),
+  ]);
   const tagBySlug = new Map((tags ?? []).map((t) => [t.slug, t]));
   const creatorTag = creatorSlug ? tagBySlug.get(creatorSlug) ?? null : null;
   const topicTag = topicSlug ? tagBySlug.get(topicSlug) ?? null : null;
+  const campaign = campaignSlug
+    ? (campaigns ?? []).find((c) => c.slug === campaignSlug) ?? null
+    : null;
   const filterTagIds = [creatorTag?.id, topicTag?.id].filter(
     (x): x is string => !!x,
   );
@@ -94,29 +98,28 @@ export default async function AdminOverviewPage({
     );
   if (statusFilter) clipsQ = clipsQ.eq("status", statusFilter);
   if (allowedClipIds) clipsQ = clipsQ.in("id", Array.from(allowedClipIds));
+  // A campaign slug that doesn't resolve filters to nothing rather than all.
+  if (campaignSlug) {
+    clipsQ = clipsQ.eq(
+      "campaign_id",
+      campaign?.id ?? "00000000-0000-0000-0000-000000000000",
+    );
+  }
 
   // Submitted-within-range subset is filtered in-memory so we can also
-  // surface a "total" KPI across all time. Snapshots are pulled with a
-  // captured_at filter to keep the impressions chart workable.
-  const [
-    { data: clips },
-    { data: payouts },
-    { data: clippers },
-    { data: snapshots },
-  ] = await Promise.all([
-    clipsQ,
-    admin
-      .from("payouts")
-      .select("amount, paid_at, clipper_id")
-      .gte("paid_at", start.toISOString()),
-    admin
-      .from("clippers")
-      .select("id, x_handle, banned, joined_at"),
-    admin
-      .from("clip_impression_snapshots")
-      .select("clip_id, impressions, captured_at")
-      .gte("captured_at", start.toISOString()),
-  ]);
+  // surface a "total" KPI across all time. We pull the FULL snapshot
+  // history (no captured_at floor): cumulativeImpressions folds every
+  // snapshot before `start` into the day-one base, so the curve reflects
+  // the true running total — clips that finalized before the window still
+  // count, and the right edge matches the impressions KPI.
+  const [{ data: clips }, { data: clippers }, { data: snapshots }] =
+    await Promise.all([
+      clipsQ,
+      admin.from("clippers").select("id, x_handle, banned, joined_at"),
+      admin
+        .from("clip_impression_snapshots")
+        .select("clip_id, impressions, captured_at"),
+    ]);
 
   // For impressions-over-time we have to restrict snapshots to clips
   // that match the current filter, otherwise the chart double-counts
@@ -133,37 +136,8 @@ export default async function AdminOverviewPage({
       (s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0),
       0,
     ) ?? 0;
-  const totalSpend = sumNumeric(clips?.map((c) => c.payout_amount) ?? []);
-  const totalPaid = sumNumeric(payouts?.map((p) => p.amount) ?? []);
-  const outstandingCents = Math.max(
-    0,
-    Math.round(Number(totalSpend) * 100) - Math.round(Number(totalPaid) * 100),
-  );
-  const outstanding = `${Math.floor(outstandingCents / 100)}.${(outstandingCents % 100)
-    .toString()
-    .padStart(2, "0")}`;
-  const inFlightCents = (clips ?? [])
-    .filter((c) => c.status === "tracking" && !c.botting_suspected)
-    .reduce(
-      (s, c) =>
-        s +
-        computePayoutCents(
-          Number(c.impressions ?? 0),
-          c.cpm_rate_snapshot,
-          c.max_payout_snapshot,
-          c.flat_fee_snapshot ?? 0,
-          c.min_views_snapshot ?? 0,
-        ),
-      0,
-    );
-  const inFlight = `${Math.floor(inFlightCents / 100)}.${(inFlightCents % 100)
-    .toString()
-    .padStart(2, "0")}`;
-  const potentialOwedCents = outstandingCents + inFlightCents;
-  const potentialOwed = `${Math.floor(potentialOwedCents / 100)}.${(potentialOwedCents % 100)
-    .toString()
-    .padStart(2, "0")}`;
   const activeClippers = clippers?.filter((c) => !c.banned).length ?? 0;
+  const trackingCount = clips?.filter((c) => c.status === "tracking").length ?? 0;
 
   // Chart series.
   const clipsSubmittedSeries = bucketCount(
@@ -173,13 +147,6 @@ export default async function AdminOverviewPage({
         new Date(c.submitted_at).getTime() >= start.getTime(),
     ),
     (c) => c.submitted_at,
-    start,
-    now,
-  );
-  const payoutsSeries = bucketSum(
-    payouts ?? [],
-    (p) => p.paid_at,
-    (p) => p.amount,
     start,
     now,
   );
@@ -197,12 +164,11 @@ export default async function AdminOverviewPage({
     now,
   );
 
-  // Leaderboards.
-  const byClipper = new Map<string, { impressions: number; earned: number }>();
+  // Leaderboards (impressions-ranked; money lives on the payouts page).
+  const byClipper = new Map<string, { impressions: number }>();
   for (const c of clips ?? []) {
-    const cur = byClipper.get(c.clipper_id) ?? { impressions: 0, earned: 0 };
+    const cur = byClipper.get(c.clipper_id) ?? { impressions: 0 };
     cur.impressions += Number(c.final_impressions ?? c.impressions ?? 0);
-    cur.earned += Math.round(Number(c.payout_amount ?? 0) * 100);
     byClipper.set(c.clipper_id, cur);
   }
   const handles = new Map(clippers?.map((c) => [c.id, c.x_handle]) ?? []);
@@ -218,7 +184,6 @@ export default async function AdminOverviewPage({
       clipperId: c.clipper_id,
       handle: handles.get(c.clipper_id) ?? "—",
       impressions: Number(c.final_impressions ?? c.impressions ?? 0),
-      earnedCents: Math.round(Number(c.payout_amount ?? 0) * 100),
       status: c.status as string,
     }))
     .sort((a, b) => b.impressions - a.impressions)
@@ -227,7 +192,13 @@ export default async function AdminOverviewPage({
   const creatorTags = (tags ?? []).filter((t) => t.kind === "creator");
   const topicTags = (tags ?? []).filter((t) => t.kind !== "creator");
 
-  const baseParams = { range, creator: creatorSlug, topic: topicSlug, status: statusFilter };
+  const baseParams = {
+    range,
+    creator: creatorSlug,
+    topic: topicSlug,
+    status: statusFilter,
+    campaign: campaignSlug,
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -274,6 +245,16 @@ export default async function AdminOverviewPage({
               allowClear
             />
           )}
+          {(campaigns ?? []).length > 0 && (
+            <FilterRow
+              label="campaign"
+              base={baseParams}
+              param="campaign"
+              value={campaignSlug}
+              options={(campaigns ?? []).map((c) => ({ value: c.slug, label: c.name }))}
+              allowClear
+            />
+          )}
           <FilterRow
             label="status"
             base={baseParams}
@@ -289,45 +270,15 @@ export default async function AdminOverviewPage({
         </div>
 
         <StatGrid>
-          <StatCell label="impressions" value={fmtInt(totalImpressions)} />
-          <StatCell label="spend (earned)" value={fmtUsd(totalSpend)} accent="admin" />
-          <StatCell label="paid" value={fmtUsd(totalPaid)} />
-          <StatCell label="outstanding" value={fmtUsd(outstanding)} accent="admin" />
-        </StatGrid>
-
-        <StatGrid>
-          <StatCell label="outstanding (finalized)" value={fmtUsd(outstanding)} accent="admin" />
-          <StatCell label="in-flight (estimate)" value={`~${fmtUsd(inFlight)}`} />
-          <StatCell
-            label="potential owed total"
-            value={`~${fmtUsd(potentialOwed)}`}
-            accent="admin"
-          />
-          <StatCell
-            label="tracking clips"
-            value={fmtInt(clips?.filter((c) => c.status === "tracking").length ?? 0)}
-          />
-        </StatGrid>
-
-        <StatGrid>
-          <StatCell label="clippers (active)" value={fmtInt(activeClippers)} />
+          <StatCell label="impressions" value={fmtInt(totalImpressions)} accent="admin" />
           <StatCell label="clips (filter)" value={fmtInt(clips?.length ?? 0)} />
-          <StatCell
-            label="tracking"
-            value={fmtInt(clips?.filter((c) => c.status === "tracking").length ?? 0)}
-            accent="accent"
-          />
-          <StatCell
-            label="rejected"
-            value={fmtInt(clips?.filter((c) => c.status === "rejected").length ?? 0)}
-            accent="danger"
-          />
+          <StatCell label="tracking" value={fmtInt(trackingCount)} accent="accent" />
+          <StatCell label="clippers (active)" value={fmtInt(activeClippers)} />
         </StatGrid>
 
         <OverviewCharts
           impressions={impressionsSeries}
           clipsSubmitted={clipsSubmittedSeries}
-          payoutsPerDay={payoutsSeries}
           newClippersPerDay={newClippersSeries}
         />
 
@@ -340,7 +291,6 @@ export default async function AdminOverviewPage({
                   <TH>#</TH>
                   <TH>handle</TH>
                   <TH>impressions</TH>
-                  <TH>earned</TH>
                 </THead>
                 <TBody>
                   {topClippers.map((row, i) => (
@@ -355,13 +305,12 @@ export default async function AdminOverviewPage({
                         </Link>
                       </TD>
                       <TD className="num">{fmtInt(row.impressions)}</TD>
-                      <TD className="num">{fmtUsd((row.earned / 100).toFixed(2))}</TD>
                     </TR>
                   ))}
                   {topClippers.length === 0 && (
                     <TR>
                       <TD className="text-text-3 font-mono text-sm">no data</TD>
-                      <TD /><TD /><TD />
+                      <TD /><TD />
                     </TR>
                   )}
                 </TBody>
@@ -378,7 +327,6 @@ export default async function AdminOverviewPage({
                   <TH>clipper</TH>
                   <TH>tweet</TH>
                   <TH>impressions</TH>
-                  <TH>earned</TH>
                 </THead>
                 <TBody>
                   {topClips.map((row, i) => (
@@ -403,17 +351,12 @@ export default async function AdminOverviewPage({
                         </a>
                       </TD>
                       <TD className="num">{fmtInt(row.impressions)}</TD>
-                      <TD className="num">
-                        {row.earnedCents > 0
-                          ? fmtUsd((row.earnedCents / 100).toFixed(2))
-                          : "—"}
-                      </TD>
                     </TR>
                   ))}
                   {topClips.length === 0 && (
                     <TR>
                       <TD className="text-text-3 font-mono text-sm">no data</TD>
-                      <TD /><TD /><TD /><TD />
+                      <TD /><TD /><TD />
                     </TR>
                   )}
                 </TBody>
@@ -438,6 +381,7 @@ type BaseParams = {
   creator: string | undefined;
   topic: string | undefined;
   status: StatusFilter | undefined;
+  campaign: string | undefined;
 };
 
 function buildHref(
@@ -451,6 +395,7 @@ function buildHref(
   if (next.creator) params.set("creator", next.creator);
   if (next.topic) params.set("topic", next.topic);
   if (next.status) params.set("status", next.status);
+  if (next.campaign) params.set("campaign", next.campaign);
   const qs = params.toString();
   return qs ? `/admin?${qs}` : "/admin";
 }
@@ -466,7 +411,7 @@ function FilterRow({
 }: {
   label: string;
   base: BaseParams;
-  param: "range" | "creator" | "topic" | "status";
+  param: "range" | "creator" | "topic" | "status" | "campaign";
   value: string | undefined;
   options: Array<{ value: string; label: string }>;
   defaultValue?: string;

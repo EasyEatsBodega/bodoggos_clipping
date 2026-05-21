@@ -18,17 +18,15 @@ import type { DailyPoint } from "@/lib/chart-data";
 export function OverviewCharts({
   impressions,
   clipsSubmitted,
-  payoutsPerDay,
   newClippersPerDay,
 }: {
   impressions: DailyPoint[];
   clipsSubmitted: DailyPoint[];
-  payoutsPerDay: DailyPoint[];
   newClippersPerDay: DailyPoint[];
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <ChartCard title="impressions over time" subtitle="cumulative across all matching clips">
+      <ChartCard title="impressions over time" subtitle="running total across all matching clips">
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={impressions} margin={chartMargin}>
             <defs>
@@ -60,19 +58,6 @@ export function OverviewCharts({
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title="payouts per day" subtitle="USDC paid out, by payout date">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={payoutsPerDay} margin={chartMargin}>
-            {commonAxes(payoutsPerDay)}
-            <Tooltip
-              {...tooltipProps}
-              formatter={(v) => `$${Number(v).toFixed(2)}`}
-            />
-            <Bar dataKey="value" fill="var(--accent)" />
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
-
       <ChartCard title="new clippers per day" subtitle="signups joining the program">
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={newClippersPerDay} margin={chartMargin}>
@@ -89,6 +74,22 @@ export function OverviewCharts({
         </ResponsiveContainer>
       </ChartCard>
     </div>
+  );
+}
+
+// Standalone payouts-per-day bar chart — lives on the payouts page now that
+// money has moved off the overview dashboard. Reuses the shared chart styling.
+export function PayoutsPerDayChart({ data }: { data: DailyPoint[] }) {
+  return (
+    <ChartCard title="payouts per day" subtitle="USDC paid out, by payout date">
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data} margin={chartMargin}>
+          {commonAxes(data)}
+          <Tooltip {...tooltipProps} formatter={(v) => `$${Number(v).toFixed(2)}`} />
+          <Bar dataKey="value" fill="var(--accent)" />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }
 

@@ -5,8 +5,10 @@ import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { computePayoutCents } from "@/lib/payout-calc";
+import { bucketSum } from "@/lib/chart-data";
 import { weekStartET, weekEndET, fmtWeekRange } from "@/lib/week";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { PayoutsPerDayChart } from "@/components/admin/OverviewCharts";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +37,7 @@ export default async function AdminPayoutsPage() {
       admin
         .from("clips")
         .select(
-          "clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot",
+          "clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
         ),
       admin.from("payouts").select("clipper_id, amount"),
       admin
@@ -120,6 +122,42 @@ export default async function AdminPayoutsPage() {
   const thisWeekFinalizedCents = thisWeek.reduce((s, r) => s + r.earnedCents, 0);
   const thisWeekInFlightCents = thisWeek.reduce((s, r) => s + r.inFlightCents, 0);
 
+  // Program-wide money totals (moved here from the overview dashboard).
+  const totalEarnedCents = Array.from(allTime.values()).reduce(
+    (s, v) => s + v.earnedCents,
+    0,
+  );
+  const totalPaidCents = Array.from(allTime.values()).reduce(
+    (s, v) => s + v.paidCents,
+    0,
+  );
+  const programInFlightCents = (clips ?? [])
+    .filter((c) => c.status === "tracking" && !c.botting_suspected)
+    .reduce(
+      (s, c) =>
+        s +
+        computePayoutCents(
+          Number(c.impressions ?? 0),
+          c.cpm_rate_snapshot,
+          c.max_payout_snapshot,
+          c.flat_fee_snapshot ?? 0,
+          c.min_views_snapshot ?? 0,
+        ),
+      0,
+    );
+  const potentialOwedCents = totalOutstandingCents + programInFlightCents;
+
+  const chartStart = new Date(now.getTime() - 30 * 86_400_000);
+  const payoutsSeries = bucketSum(
+    payoutLog ?? [],
+    (p) => p.paid_at,
+    (p) => p.amount,
+    chartStart,
+    now,
+  );
+
+  const usd = (cents: number) => fmtUsd((cents / 100).toFixed(2));
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
@@ -129,6 +167,26 @@ export default async function AdminPayoutsPage() {
       />
       <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
+        <section className="flex flex-col gap-3">
+          <h2 className="label">program totals</h2>
+          <StatGrid>
+            <StatCell label="spend (earned)" value={usd(totalEarnedCents)} accent="admin" />
+            <StatCell label="paid" value={usd(totalPaidCents)} />
+            <StatCell
+              label="outstanding"
+              value={usd(totalOutstandingCents)}
+              accent="admin"
+              hint="finalized, unpaid"
+            />
+            <StatCell
+              label="potential owed total"
+              value={`~${usd(potentialOwedCents)}`}
+              hint={`incl. ~${usd(programInFlightCents)} in-flight`}
+            />
+          </StatGrid>
+          <PayoutsPerDayChart data={payoutsSeries} />
+        </section>
+
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <h2 className="label">last week / ready to pay</h2>
