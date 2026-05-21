@@ -1,5 +1,5 @@
 import { Header } from "@/components/Header";
-import { StatCell, StatGrid } from "@/components/ui/StatCell";
+import { StatCell } from "@/components/ui/StatCell";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -113,6 +113,11 @@ export default async function AdminOverviewPage({
       campaign?.id ?? "00000000-0000-0000-0000-000000000000",
     );
   }
+  // The range scopes the clip set too (not just the charts), so the KPIs and
+  // leaderboards reflect the selected window. "all" applies no date floor.
+  if (range !== "all") {
+    clipsQ = clipsQ.gte("submitted_at", start.toISOString());
+  }
 
   // Snapshots are bounded to the selected window AND paged through in full:
   // PostgREST caps each response at 1000 rows, so a single query would return
@@ -140,8 +145,17 @@ export default async function AdminOverviewPage({
       (s, c) => s + Number(c.final_impressions ?? c.impressions ?? 0),
       0,
     ) ?? 0;
-  const activeClippers = clippers?.filter((c) => !c.banned).length ?? 0;
+  // Active clippers represented in the current filter/range: distinct,
+  // non-banned clippers who have at least one clip in the filtered set.
+  const bannedIds = new Set((clippers ?? []).filter((c) => c.banned).map((c) => c.id));
+  const activeClipperIds = new Set<string>();
+  for (const c of clips ?? []) {
+    if (!bannedIds.has(c.clipper_id)) activeClipperIds.add(c.clipper_id);
+  }
+  const activeClippers = activeClipperIds.size;
   const trackingCount = clips?.filter((c) => c.status === "tracking").length ?? 0;
+  const clipCount = clips?.length ?? 0;
+  const avgImpressionsPerClip = clipCount > 0 ? Math.round(totalImpressions / clipCount) : 0;
 
   // Chart series.
   const clipsSubmittedSeries = bucketCount(
@@ -290,12 +304,13 @@ export default async function AdminOverviewPage({
           />
         </div>
 
-        <StatGrid>
+        <div className="bg-border grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-px">
           <StatCell label="impressions" value={fmtInt(totalImpressions)} accent="admin" />
-          <StatCell label="clips (filter)" value={fmtInt(clips?.length ?? 0)} />
+          <StatCell label="avg / clip" value={fmtInt(avgImpressionsPerClip)} />
+          <StatCell label="clips (filter)" value={fmtInt(clipCount)} />
           <StatCell label="tracking" value={fmtInt(trackingCount)} accent="accent" />
           <StatCell label="clippers (active)" value={fmtInt(activeClippers)} />
-        </StatGrid>
+        </div>
 
         <OverviewCharts
           impressions={impressionsSeries}
