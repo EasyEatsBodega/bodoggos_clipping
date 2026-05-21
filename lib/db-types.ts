@@ -126,7 +126,7 @@ export type ClipTag = {
   id: string;
   slug: string;
   label: string;
-  kind: "topic" | "creator";
+  kind: "topic" | "creator" | "partner";
   sort_order: number;
   created_at: string;
 };

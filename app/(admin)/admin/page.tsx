@@ -24,6 +24,7 @@ export default async function AdminOverviewPage({
     topic?: string;
     status?: string;
     campaign?: string;
+    partner?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -33,6 +34,7 @@ export default async function AdminOverviewPage({
   const creatorSlug = (sp.creator ?? "").trim() || undefined;
   const topicSlug = (sp.topic ?? "").trim() || undefined;
   const campaignSlug = (sp.campaign ?? "").trim() || undefined;
+  const partnerSlug = (sp.partner ?? "").trim() || undefined;
   const statusFilter = (VALID_STATUS as string[]).includes(sp.status ?? "")
     ? (sp.status as StatusFilter)
     : undefined;
@@ -59,10 +61,11 @@ export default async function AdminOverviewPage({
   const tagBySlug = new Map((tags ?? []).map((t) => [t.slug, t]));
   const creatorTag = creatorSlug ? tagBySlug.get(creatorSlug) ?? null : null;
   const topicTag = topicSlug ? tagBySlug.get(topicSlug) ?? null : null;
+  const partnerTag = partnerSlug ? tagBySlug.get(partnerSlug) ?? null : null;
   const campaign = campaignSlug
     ? (campaigns ?? []).find((c) => c.slug === campaignSlug) ?? null
     : null;
-  const filterTagIds = [creatorTag?.id, topicTag?.id].filter(
+  const filterTagIds = [creatorTag?.id, topicTag?.id, partnerTag?.id].filter(
     (x): x is string => !!x,
   );
 
@@ -190,7 +193,8 @@ export default async function AdminOverviewPage({
     .slice(0, 10);
 
   const creatorTags = (tags ?? []).filter((t) => t.kind === "creator");
-  const topicTags = (tags ?? []).filter((t) => t.kind !== "creator");
+  const topicTags = (tags ?? []).filter((t) => t.kind === "topic");
+  const partnerTags = (tags ?? []).filter((t) => t.kind === "partner");
 
   const baseParams = {
     range,
@@ -198,6 +202,7 @@ export default async function AdminOverviewPage({
     topic: topicSlug,
     status: statusFilter,
     campaign: campaignSlug,
+    partner: partnerSlug,
   };
 
   return (
@@ -252,6 +257,16 @@ export default async function AdminOverviewPage({
               param="campaign"
               value={campaignSlug}
               options={(campaigns ?? []).map((c) => ({ value: c.slug, label: c.name }))}
+              allowClear
+            />
+          )}
+          {partnerTags.length > 0 && (
+            <FilterRow
+              label="partner"
+              base={baseParams}
+              param="partner"
+              value={partnerSlug}
+              options={partnerTags.map((t) => ({ value: t.slug, label: t.label }))}
               allowClear
             />
           )}
@@ -382,6 +397,7 @@ type BaseParams = {
   topic: string | undefined;
   status: StatusFilter | undefined;
   campaign: string | undefined;
+  partner: string | undefined;
 };
 
 function buildHref(
@@ -396,6 +412,7 @@ function buildHref(
   if (next.topic) params.set("topic", next.topic);
   if (next.status) params.set("status", next.status);
   if (next.campaign) params.set("campaign", next.campaign);
+  if (next.partner) params.set("partner", next.partner);
   const qs = params.toString();
   return qs ? `/admin?${qs}` : "/admin";
 }
@@ -411,7 +428,7 @@ function FilterRow({
 }: {
   label: string;
   base: BaseParams;
-  param: "range" | "creator" | "topic" | "status" | "campaign";
+  param: "range" | "creator" | "topic" | "status" | "campaign" | "partner";
   value: string | undefined;
   options: Array<{ value: string; label: string }>;
   defaultValue?: string;

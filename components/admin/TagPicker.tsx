@@ -15,9 +15,11 @@ export function TagPicker({
   initialTagIds: string[];
   // If set, the picker only displays/edits tags of that kind and the
   // server-side save preserves tags of other kinds. If unset, the picker
-  // shows both sections in a single dropdown and replaces all tags.
-  kind?: "topic" | "creator";
+  // shows all sections in a single dropdown and replaces all tags.
+  kind?: "topic" | "creator" | "partner";
 }) {
+  // Partners are single-select: one partner per clip.
+  const singleSelect = kind === "partner";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(initialTagIds));
@@ -52,9 +54,16 @@ export function TagPicker({
   }
 
   function toggle(tagId: string) {
-    const next = new Set(selected);
-    if (next.has(tagId)) next.delete(tagId);
-    else next.add(tagId);
+    let next: Set<string>;
+    if (singleSelect) {
+      // Radio behavior: clicking the active one clears it, otherwise it
+      // replaces whatever was selected.
+      next = selected.has(tagId) ? new Set() : new Set([tagId]);
+    } else {
+      next = new Set(selected);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+    }
     setSelected(next);
     save(next);
   }
@@ -63,20 +72,25 @@ export function TagPicker({
   // both grouped sections.
   const visibleTags = kind ? allTags.filter((t) => t.kind === kind) : allTags;
   const selectedTags = visibleTags.filter((t) => selected.has(t.id));
-  const topicTags = allTags.filter((t) => t.kind !== "creator");
+  const topicTags = allTags.filter((t) => t.kind === "topic");
   const creatorTags = allTags.filter((t) => t.kind === "creator");
-  const addLabel = kind === "creator" ? "+ creator" : kind === "topic" ? "+ topic" : "+ tag";
+  const partnerTags = allTags.filter((t) => t.kind === "partner");
+  const addLabel =
+    kind === "creator"
+      ? "+ creator"
+      : kind === "topic"
+        ? "+ topic"
+        : kind === "partner"
+          ? "+ partner"
+          : "+ tag";
 
   return (
     <div className="relative inline-flex flex-wrap items-center gap-1" ref={ref}>
       {selectedTags.map((t) => (
         <span
           key={t.id}
-          className={`font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 border ${
-            t.kind === "creator"
-              ? "border-accent/40 text-accent"
-              : "border-admin/40 text-admin"
-          }`}
+          className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 border"
+          style={{ borderColor: `${kindColor(t.kind)}66`, color: kindColor(t.kind) }}
         >
           {t.label}
         </span>
@@ -113,6 +127,14 @@ export function TagPicker({
               busy={busy}
               onToggle={toggle}
             />
+          ) : kind === "partner" ? (
+            <Section
+              title="partner"
+              tags={partnerTags}
+              selected={selected}
+              busy={busy}
+              onToggle={toggle}
+            />
           ) : (
             <>
               <Section
@@ -129,6 +151,13 @@ export function TagPicker({
                 busy={busy}
                 onToggle={toggle}
               />
+              <Section
+                title="partner"
+                tags={partnerTags}
+                selected={selected}
+                busy={busy}
+                onToggle={toggle}
+              />
             </>
           )}
           {error && (
@@ -138,6 +167,12 @@ export function TagPicker({
       )}
     </div>
   );
+}
+
+function kindColor(kind: ClipTag["kind"]): string {
+  if (kind === "creator") return "var(--accent)";
+  if (kind === "partner") return "var(--partner)";
+  return "var(--admin)";
 }
 
 function Section({

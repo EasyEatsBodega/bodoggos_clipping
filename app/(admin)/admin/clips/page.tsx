@@ -168,9 +168,15 @@ export default async function AdminClipsPage({
   const tagKindById = new Map(tags.map((t) => [t.id, t.kind] as const));
   const creatorIdsByClip = new Map<string, string[]>();
   const topicIdsByClip = new Map<string, string[]>();
+  const partnerIdsByClip = new Map<string, string[]>();
   for (const a of assignments ?? []) {
     const k = tagKindById.get(a.tag_id);
-    const target = k === "creator" ? creatorIdsByClip : topicIdsByClip;
+    const target =
+      k === "creator"
+        ? creatorIdsByClip
+        : k === "partner"
+          ? partnerIdsByClip
+          : topicIdsByClip;
     const cur = target.get(a.clip_id) ?? [];
     cur.push(a.tag_id);
     target.set(a.clip_id, cur);
@@ -248,9 +254,37 @@ export default async function AdminClipsPage({
 
         {(() => {
           const creatorTags = tags.filter((t) => t.kind === "creator");
-          const topicTags = tags.filter((t) => t.kind !== "creator");
+          const topicTags = tags.filter((t) => t.kind === "topic");
+          const partnerTags = tags.filter((t) => t.kind === "partner");
           return (
             <>
+              {partnerTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+                    partner:
+                  </span>
+                  <a
+                    href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
+                    className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
+                    style={!tagFilter ? { background: "var(--partner)", color: "#0a0a0b" } : undefined}
+                  >
+                    all
+                  </a>
+                  {partnerTags.map((t) => {
+                    const on = tagFilter === t.slug;
+                    return (
+                      <a
+                        key={t.id}
+                        href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
+                        className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+                        style={on ? { background: "var(--partner)", color: "#0a0a0b" } : undefined}
+                      >
+                        {t.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
               {creatorTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
@@ -318,6 +352,7 @@ export default async function AdminClipsPage({
               <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
               <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
               <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
+              <TH>partner</TH>
               <TH>creator</TH>
               <TH>topic</TH>
               <TH />
@@ -384,6 +419,14 @@ export default async function AdminClipsPage({
                       <TagPicker
                         clipId={c.id}
                         allTags={tags}
+                        initialTagIds={partnerIdsByClip.get(c.id) ?? []}
+                        kind="partner"
+                      />
+                    </TD>
+                    <TD>
+                      <TagPicker
+                        clipId={c.id}
+                        allTags={tags}
                         initialTagIds={creatorIdsByClip.get(c.id) ?? []}
                         kind="creator"
                       />
@@ -414,7 +457,7 @@ export default async function AdminClipsPage({
               {filtered.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

@@ -106,13 +106,19 @@ export default async function AdminTagsPage() {
               <TBody>
                 {(tags ?? []).map((t) => {
                   const s = stats.get(t.id) ?? emptyStats();
-                  const isCreator = t.kind === "creator";
+                  const linkColor =
+                    t.kind === "creator"
+                      ? "var(--accent)"
+                      : t.kind === "partner"
+                        ? "var(--partner)"
+                        : "var(--admin)";
                   return (
                     <TR key={t.id}>
                       <TD className="font-mono">
                         <Link
                           href={`/admin/clips?tag=${t.slug}` as never}
-                          className={`hover:underline ${isCreator ? "text-accent" : "text-admin"}`}
+                          className="hover:underline"
+                          style={{ color: linkColor }}
                         >
                           {t.label}
                         </Link>
