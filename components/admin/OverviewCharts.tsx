@@ -13,17 +13,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { DailyPoint } from "@/lib/chart-data";
+import type { DailyPoint, Granularity } from "@/lib/chart-data";
 
 export function OverviewCharts({
   impressions,
   clipsSubmitted,
   newClippersPerDay,
+  granularity = "day",
 }: {
   impressions: DailyPoint[];
   clipsSubmitted: DailyPoint[];
   newClippersPerDay: DailyPoint[];
+  granularity?: Granularity;
 }) {
+  const per = granularity === "hour" ? "per hour" : "per day";
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <ChartCard title="impressions over time" subtitle="running total across all matching clips">
@@ -36,7 +39,7 @@ export function OverviewCharts({
               </linearGradient>
             </defs>
             {commonAxes(impressions)}
-            <Tooltip {...tooltipProps} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
             <Area
               type="monotone"
               dataKey="value"
@@ -48,21 +51,21 @@ export function OverviewCharts({
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title="clips submitted per day" subtitle="count of new clip submissions">
+      <ChartCard title={`clips submitted ${per}`} subtitle="count of new clip submissions">
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={clipsSubmitted} margin={chartMargin}>
             {commonAxes(clipsSubmitted)}
-            <Tooltip {...tooltipProps} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
             <Bar dataKey="value" fill="var(--admin)" />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title="new clippers per day" subtitle="signups joining the program">
+      <ChartCard title={`new clippers ${per}`} subtitle="signups joining the program">
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={newClippersPerDay} margin={chartMargin}>
             {commonAxes(newClippersPerDay)}
-            <Tooltip {...tooltipProps} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
             <Line
               type="monotone"
               dataKey="value"
@@ -85,7 +88,7 @@ export function PayoutsPerDayChart({ data }: { data: DailyPoint[] }) {
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={chartMargin}>
           {commonAxes(data)}
-          <Tooltip {...tooltipProps} formatter={(v) => `$${Number(v).toFixed(2)}`} />
+          <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => `$${Number(v).toFixed(2)}`} />
           <Bar dataKey="value" fill="var(--accent)" />
         </BarChart>
       </ResponsiveContainer>
@@ -118,7 +121,7 @@ function commonAxes(data: DailyPoint[]) {
         dataKey="date"
         ticks={ticks}
         tick={{ fill: "var(--text-3)", fontSize: 10, fontFamily: "var(--font-mono)" }}
-        tickFormatter={shortDate}
+        tickFormatter={fmtTick}
         axisLine={{ stroke: "var(--border)" }}
         tickLine={false}
       />
@@ -133,8 +136,14 @@ function commonAxes(data: DailyPoint[]) {
   );
 }
 
-function shortDate(ymd: string): string {
-  const [, m, d] = ymd.split("-");
+// Bucket keys are either "YYYY-MM-DD" (day) or an ISO timestamp (hour).
+function fmtTick(key: string): string {
+  if (key.includes("T")) {
+    const d = new Date(key);
+    const h = String(d.getUTCHours()).padStart(2, "0");
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h}h`;
+  }
+  const [, m, d] = key.split("-");
   return `${m}/${d}`;
 }
 

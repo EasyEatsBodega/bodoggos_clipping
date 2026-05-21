@@ -6,12 +6,12 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { OverviewCharts } from "@/components/admin/OverviewCharts";
-import { bucketCount, cumulativeImpressions } from "@/lib/chart-data";
+import { bucketCount, cumulativeImpressions, type Granularity } from "@/lib/chart-data";
 
 export const dynamic = "force-dynamic";
 
-type DateRange = "7d" | "30d" | "90d" | "all";
-const VALID_RANGES: DateRange[] = ["7d", "30d", "90d", "all"];
+type DateRange = "24h" | "7d" | "30d" | "90d" | "all";
+const VALID_RANGES: DateRange[] = ["24h", "7d", "30d", "90d", "all"];
 type StatusFilter = "tracking" | "completed" | "rejected";
 const VALID_STATUS: StatusFilter[] = ["tracking", "completed", "rejected"];
 
@@ -45,10 +45,15 @@ export default async function AdminOverviewPage({
   // find so the x-axis still has a sensible left edge.
   const now = new Date();
   let start: Date;
-  if (range === "7d") start = daysAgo(now, 7);
+  if (range === "24h") start = hoursAgo(now, 24);
+  else if (range === "7d") start = daysAgo(now, 7);
   else if (range === "30d") start = daysAgo(now, 30);
   else if (range === "90d") start = daysAgo(now, 90);
   else start = daysAgo(now, 365);
+
+  // Short ranges resolve hourly so the curves move with each poll cycle;
+  // longer ranges stay daily to keep the point count sane.
+  const granularity: Granularity = range === "24h" || range === "7d" ? "hour" : "day";
 
   // Load tags + campaigns first so we can resolve filters to ids.
   const [{ data: tags }, { data: campaigns }] = await Promise.all([
@@ -152,6 +157,7 @@ export default async function AdminOverviewPage({
     (c) => c.submitted_at,
     start,
     now,
+    granularity,
   );
   const newClippersSeries = bucketCount(
     (clippers ?? []).filter(
@@ -160,11 +166,14 @@ export default async function AdminOverviewPage({
     (c) => c.joined_at,
     start,
     now,
+    granularity,
   );
   const impressionsSeries = cumulativeImpressions(
     filteredSnapshots,
     start,
     now,
+    granularity,
+    totalImpressions,
   );
 
   // Leaderboards (impressions-ranked; money lives on the payouts page).
@@ -222,6 +231,7 @@ export default async function AdminOverviewPage({
             param="range"
             value={range}
             options={[
+              { value: "24h", label: "24h" },
               { value: "7d", label: "7d" },
               { value: "30d", label: "30d" },
               { value: "90d", label: "90d" },
@@ -295,6 +305,7 @@ export default async function AdminOverviewPage({
           impressions={impressionsSeries}
           clipsSubmitted={clipsSubmittedSeries}
           newClippersPerDay={newClippersSeries}
+          granularity={granularity}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -388,6 +399,12 @@ function daysAgo(now: Date, n: number): Date {
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - n);
   d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function hoursAgo(now: Date, n: number): Date {
+  const d = new Date(now);
+  d.setUTCHours(d.getUTCHours() - n, 0, 0, 0);
   return d;
 }
 
