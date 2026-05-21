@@ -119,6 +119,7 @@ function commonAxes(data: DailyPoint[]) {
       <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
       <XAxis
         dataKey="date"
+        type="category"
         ticks={ticks}
         tick={{ fill: "var(--text-3)", fontSize: 10, fontFamily: "var(--font-mono)" }}
         tickFormatter={fmtTick}
@@ -137,14 +138,25 @@ function commonAxes(data: DailyPoint[]) {
 }
 
 // Bucket keys are either "YYYY-MM-DD" (day) or an ISO timestamp (hour).
-function fmtTick(key: string): string {
-  if (key.includes("T")) {
-    const d = new Date(key);
+// Recharts may hand the formatter the raw string key OR — when it treats the
+// hourly ISO keys as a time axis — a numeric epoch. Normalize both, and never
+// assume the argument is a string (a non-string here is what crashed 24H/7D).
+function fmtTick(value: unknown): string {
+  if (typeof value === "number") {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
     const h = String(d.getUTCHours()).padStart(2, "0");
     return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h}h`;
   }
-  const [, m, d] = key.split("-");
-  return `${m}/${d}`;
+  const key = String(value ?? "");
+  if (key.includes("T")) {
+    const d = new Date(key);
+    if (Number.isNaN(d.getTime())) return key;
+    const h = String(d.getUTCHours()).padStart(2, "0");
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h}h`;
+  }
+  const parts = key.split("-");
+  return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : key;
 }
 
 function abbrev(n: number): string {
