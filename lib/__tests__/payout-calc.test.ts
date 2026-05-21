@@ -55,6 +55,33 @@ describe("computePayoutCents", () => {
   });
 });
 
+// Locks the production BoDoggos Streams config: $4 CPM, $75 cap, no flat fee.
+// The CPM-earned portion must never exceed $75.00 regardless of impressions.
+describe("$75 cap invariant (production config)", () => {
+  const CPM = 4;
+  const CAP = 75;
+
+  it("caps exactly at the impression count that reaches $75", () => {
+    // $75 / $4 per 1k = 18,750 impressions to hit the cap.
+    expect(computePayoutAmount(18_750, CPM, CAP)).toBe("75.00");
+  });
+
+  it("one impression below the cap is still under $75", () => {
+    expect(computePayoutCents(18_749, CPM, CAP)).toBe(7499);
+  });
+
+  it("never exceeds $75 across a wide range of impressions", () => {
+    for (const imps of [18_751, 20_000, 100_000, 1_000_000, 50_000_000, 999_999_999]) {
+      expect(computePayoutCents(imps, CPM, CAP)).toBeLessThanOrEqual(7500);
+      expect(computePayoutAmount(imps, CPM, CAP)).toBe("75.00");
+    }
+  });
+
+  it("string-typed snapshots (as stored in the DB) cap identically", () => {
+    expect(computePayoutAmount(1_000_000, "4.00", "75.00", "0")).toBe("75.00");
+  });
+});
+
 describe("computeRollingOwedCents", () => {
   const baseClip = {
     cpm_rate_snapshot: "4",
