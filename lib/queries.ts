@@ -41,7 +41,7 @@ export async function getCampaignSpend(
   const { data: clips } = await supabase
     .from("clips")
     .select(
-      "status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+      "status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot",
     )
     .eq("campaign_id", campaignId)
     .neq("status", "rejected");
@@ -59,6 +59,7 @@ export async function getCampaignSpend(
         Number(c.cpm_rate_snapshot ?? 0),
         Number(c.max_payout_snapshot ?? 0),
         Number(c.flat_fee_snapshot ?? 0),
+        Number(c.min_views_snapshot ?? 0),
       ),
     );
   }

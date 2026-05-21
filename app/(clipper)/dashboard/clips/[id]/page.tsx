@@ -127,11 +127,13 @@ function estimatePayout(clip: {
   cpm_rate_snapshot: string;
   max_payout_snapshot: string;
   flat_fee_snapshot?: string | null;
+  min_views_snapshot?: number | null;
 }): string {
   return computePayoutAmount(
     clip.impressions,
     clip.cpm_rate_snapshot,
     clip.max_payout_snapshot,
     clip.flat_fee_snapshot ?? 0,
+    clip.min_views_snapshot ?? 0,
   );
 }

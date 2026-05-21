@@ -20,7 +20,7 @@ export async function POST(
   const { data: clip, error: getErr } = await auth.admin
     .from("clips")
     .select(
-      "id, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, botting_suspected",
+      "id, status, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
     )
     .eq("id", id)
     .maybeSingle();
@@ -48,6 +48,7 @@ export async function POST(
           clip.cpm_rate_snapshot,
           clip.max_payout_snapshot,
           clip.flat_fee_snapshot ?? 0,
+          clip.min_views_snapshot ?? 0,
         );
   }
 

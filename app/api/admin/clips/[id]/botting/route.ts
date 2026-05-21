@@ -56,7 +56,7 @@ export async function DELETE(
   const { data: clip, error: getErr } = await auth.admin
     .from("clips")
     .select(
-      "id, status, impressions, final_impressions, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot",
+      "id, status, impressions, final_impressions, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot",
     )
     .eq("id", id)
     .maybeSingle();
@@ -74,6 +74,7 @@ export async function DELETE(
       clip.cpm_rate_snapshot,
       clip.max_payout_snapshot,
       clip.flat_fee_snapshot ?? 0,
+      clip.min_views_snapshot ?? 0,
     );
   }
 

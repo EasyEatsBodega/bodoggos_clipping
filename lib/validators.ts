@@ -119,6 +119,7 @@ export const campaignConfigSchema = z.object({
   cpm_rate: z.number().positive(),
   max_payout_per_clip: z.number().positive(),
   tracking_days: z.number().int().min(1).max(90),
+  min_views: z.number().int().nonnegative().max(1_000_000_000).nullable().optional(),
   active: z.boolean(),
   description: z.string().max(500).nullable().optional(),
   brief_url: z.string().url().max(500).nullable().optional(),

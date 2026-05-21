@@ -23,6 +23,7 @@ export async function PATCH(
       cpm_rate: parsed.data.cpm_rate.toFixed(2),
       max_payout_per_clip: parsed.data.max_payout_per_clip.toFixed(2),
       tracking_days: parsed.data.tracking_days,
+      min_views: parsed.data.min_views ?? null,
       active: parsed.data.active,
       description: parsed.data.description ?? null,
       brief_url: parsed.data.brief_url ?? null,

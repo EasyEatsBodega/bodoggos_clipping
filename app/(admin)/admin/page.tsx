@@ -90,7 +90,7 @@ export default async function AdminOverviewPage({
   let clipsQ = admin
     .from("clips")
     .select(
-      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, botting_suspected",
+      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
     );
   if (statusFilter) clipsQ = clipsQ.eq("status", statusFilter);
   if (allowedClipIds) clipsQ = clipsQ.in("id", Array.from(allowedClipIds));
@@ -152,6 +152,7 @@ export default async function AdminOverviewPage({
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
           c.flat_fee_snapshot ?? 0,
+          c.min_views_snapshot ?? 0,
         ),
       0,
     );

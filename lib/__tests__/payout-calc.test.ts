@@ -55,6 +55,57 @@ describe("computePayoutCents", () => {
   });
 });
 
+// Per-campaign minimum-views eligibility floor: a clip below the floor earns
+// nothing (not even the flat fee); once it crosses, CPM applies from view 1.
+describe("min-views eligibility floor", () => {
+  it("below the floor → 0 even though CPM earnings would otherwise apply", () => {
+    expect(computePayoutCents(4999, 4, 75, 0, 5000)).toBe(0);
+    expect(computePayoutAmount(4999, 4, 75, 0, 5000)).toBe("0.00");
+  });
+
+  it("exactly at the floor → eligible, paid on full impressions", () => {
+    // 5000 * $4/1000 = $20.00, floor is a gate not a deductible.
+    expect(computePayoutCents(5000, 4, 75, 0, 5000)).toBe(2000);
+  });
+
+  it("above the floor → CPM on ALL impressions, not just the excess", () => {
+    expect(computePayoutCents(12_000, 4, 75, 0, 5000)).toBe(4800);
+  });
+
+  it("below the floor suppresses the flat fee too", () => {
+    expect(computePayoutCents(100, 4, 75, 25, 5000)).toBe(0);
+  });
+
+  it("minViews of 0 / omitted → no floor (back-compat)", () => {
+    expect(computePayoutCents(1000, 4, 75, 0, 0)).toBe(400);
+    expect(computePayoutCents(1000, 4, 75)).toBe(400);
+  });
+});
+
+describe("computeRollingOwedCents with min-views floor", () => {
+  const baseClip = {
+    cpm_rate_snapshot: "4",
+    max_payout_snapshot: "75",
+    flat_fee_snapshot: "0" as string | null,
+  };
+
+  it("clip below its floor owes nothing", () => {
+    const clips = [
+      { ...baseClip, min_views_snapshot: 5000, id: "c1", status: "tracking" as const, impressions: 3000, final_impressions: null },
+    ];
+    expect(computeRollingOwedCents(clips, new Map())).toBe(0);
+  });
+
+  it("crossing the floor since the last mark owes the full eligible amount", () => {
+    const clips = [
+      { ...baseClip, min_views_snapshot: 5000, id: "c1", status: "tracking" as const, impressions: 10_000, final_impressions: null },
+    ];
+    // Mark was taken at 3000 (below floor → earnedAtMark 0); now eligible at
+    // 10k → $40 owed in full.
+    expect(computeRollingOwedCents(clips, new Map([["c1", 3000]]))).toBe(4000);
+  });
+});
+
 // Locks the production BoDoggos Streams config: $4 CPM, $75 cap, no flat fee.
 // The CPM-earned portion must never exceed $75.00 regardless of impressions.
 describe("$75 cap invariant (production config)", () => {

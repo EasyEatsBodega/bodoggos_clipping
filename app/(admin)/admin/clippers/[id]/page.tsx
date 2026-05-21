@@ -115,6 +115,7 @@ export default async function AdminClipperDetailPage({
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
           c.flat_fee_snapshot ?? 0,
+          c.min_views_snapshot ?? 0,
         ),
       0,
     );

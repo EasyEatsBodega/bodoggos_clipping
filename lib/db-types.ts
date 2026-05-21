@@ -34,6 +34,7 @@ export type Clip = {
   cpm_rate_snapshot: string;
   max_payout_snapshot: string;
   flat_fee_snapshot: string;
+  min_views_snapshot: number | null;
   x_author_id: string | null;
   botting_suspected: boolean;
   botting_reason: string | null;
@@ -74,6 +75,7 @@ export type Campaign = {
   cpm_rate: string;
   max_payout_per_clip: string;
   tracking_days: number;
+  min_views: number | null;
   active: boolean;
   created_at: string;
   description: string | null;

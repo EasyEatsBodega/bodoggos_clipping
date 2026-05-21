@@ -132,6 +132,12 @@ export default async function ClipperCampaignDetailPage({
                 )}
               </div>
             </div>
+            {campaign.min_views != null && campaign.min_views > 0 && (
+              <div>
+                <div className="text-text-3 text-[10px] uppercase tracking-widest">min views</div>
+                <div>{campaign.min_views.toLocaleString()} to earn</div>
+              </div>
+            )}
           </div>
 
           {(campaign.starts_at || campaign.ends_at) && (

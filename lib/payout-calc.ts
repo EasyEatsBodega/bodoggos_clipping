@@ -4,16 +4,23 @@
 // portion is capped at maxPerClip. The flat fee is additive on top of the
 // cap. This matches per-clipper deals like "$25/clip + $2 CPM cap $50":
 // a 0-impression clip pays $25; a million-impression clip pays $25 + $50.
+//
+// minViews is a per-campaign eligibility floor: a clip below it earns
+// nothing at all (not even the flat fee) until it crosses the threshold.
+// Once eligible, CPM applies from the first view — the floor is a gate,
+// not a deductible. minViews <= 0 (the default) means no floor.
 export function computePayoutCents(
   impressions: number,
   cpmRate: number | string,
   maxPerClip: number | string,
   flatFee: number | string = 0,
+  minViews = 0,
 ): number {
   const rateCents = toCents(cpmRate);
   const capCents = toCents(maxPerClip);
   const flatCents = toCents(flatFee);
   if (!Number.isFinite(impressions) || impressions < 0) return flatCents;
+  if (minViews > 0 && impressions < minViews) return 0;
   const earned = Math.floor((impressions * rateCents) / 1000);
   return flatCents + Math.min(earned, capCents);
 }
@@ -23,8 +30,9 @@ export function computePayoutAmount(
   cpmRate: number | string,
   maxPerClip: number | string,
   flatFee: number | string = 0,
+  minViews = 0,
 ): string {
-  return centsToNumeric(computePayoutCents(impressions, cpmRate, maxPerClip, flatFee));
+  return centsToNumeric(computePayoutCents(impressions, cpmRate, maxPerClip, flatFee, minViews));
 }
 
 function toCents(v: number | string): number {
@@ -52,6 +60,7 @@ type ClipForOwed = {
   cpm_rate_snapshot: string | number;
   max_payout_snapshot: string | number;
   flat_fee_snapshot: string | number | null;
+  min_views_snapshot?: number | null;
   botting_suspected?: boolean | null;
 };
 
@@ -83,11 +92,13 @@ export function computeRollingOwedCents(
     if (c.status === "rejected") continue;
     if (c.botting_suspected) continue;
     const nowImpressions = billableImpressions(c);
+    const minViews = Number(c.min_views_snapshot ?? 0);
     const earnedNow = computePayoutCents(
       nowImpressions,
       c.cpm_rate_snapshot,
       c.max_payout_snapshot,
       c.flat_fee_snapshot ?? 0,
+      minViews,
     );
     // "No mark yet" (clip never appeared in a prior payout) means nothing
     // has been paid for this clip, so earnedAtMark = 0 and the first
@@ -100,6 +111,7 @@ export function computeRollingOwedCents(
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
           c.flat_fee_snapshot ?? 0,
+          minViews,
         )
       : 0;
     total += Math.max(0, earnedNow - earnedAtMark);

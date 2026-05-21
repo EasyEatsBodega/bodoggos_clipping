@@ -34,6 +34,7 @@ export function CampaignForm(props: Props) {
     cpm_rate: c ? Number(c.cpm_rate) : 4,
     max_payout_per_clip: c ? Number(c.max_payout_per_clip) : 75,
     tracking_days: c?.tracking_days ?? 7,
+    min_views: c?.min_views != null ? Number(c.min_views) : "",
     active: c?.active ?? false,
     starts_at: toLocalInput(c?.starts_at ?? null),
     ends_at: toLocalInput(c?.ends_at ?? null),
@@ -54,6 +55,7 @@ export function CampaignForm(props: Props) {
       cpm_rate: Number(form.cpm_rate),
       max_payout_per_clip: Number(form.max_payout_per_clip),
       tracking_days: Number(form.tracking_days),
+      min_views: form.min_views === "" ? null : Number(form.min_views),
       active: form.active,
       description: form.description ? form.description : null,
       brief_url: form.brief_url ? form.brief_url : null,
@@ -173,6 +175,20 @@ export function CampaignForm(props: Props) {
             setForm({
               ...form,
               budget_usd: e.target.value === "" ? "" : Number(e.target.value),
+            })
+          }
+        />
+        <Input
+          id="min_views"
+          label="min views to earn (blank = no floor)"
+          type="number"
+          step="1"
+          min="0"
+          value={form.min_views}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              min_views: e.target.value === "" ? "" : Number(e.target.value),
             })
           }
         />

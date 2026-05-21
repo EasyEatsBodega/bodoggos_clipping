@@ -71,6 +71,7 @@ export default async function AdminCampaignsPage() {
                   <th className="text-left p-3">status</th>
                   <th className="text-right p-3">cpm</th>
                   <th className="text-right p-3">cap</th>
+                  <th className="text-right p-3">min views</th>
                   <th className="text-right p-3">budget</th>
                   <th className="text-right p-3">spent</th>
                   <th className="text-right p-3">clippers</th>
@@ -106,6 +107,11 @@ export default async function AdminCampaignsPage() {
                       </td>
                       <td className="p-3 text-right">{fmtUsd(c.cpm_rate)}</td>
                       <td className="p-3 text-right">{fmtUsd(c.max_payout_per_clip)}</td>
+                      <td className="p-3 text-right">
+                        {c.min_views != null && c.min_views > 0
+                          ? c.min_views.toLocaleString()
+                          : "—"}
+                      </td>
                       <td className="p-3 text-right">
                         {c.budget_usd != null ? fmtUsd(c.budget_usd) : "—"}
                       </td>

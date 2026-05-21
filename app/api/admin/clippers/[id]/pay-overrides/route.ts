@@ -38,7 +38,7 @@ export async function POST(
   // per-campaign rate where there's no override.
   const { data: clips, error: clipsErr } = await auth.admin
     .from("clips")
-    .select("id, status, impressions, final_impressions, campaign_id")
+    .select("id, status, impressions, final_impressions, campaign_id, min_views_snapshot")
     .eq("clipper_id", id);
   if (clipsErr) return NextResponse.json({ error: clipsErr.message }, { status: 500 });
 
@@ -84,6 +84,7 @@ export async function POST(
         effectiveCpm,
         effectiveMax,
         effectiveFlat,
+        c.min_views_snapshot ?? 0,
       );
       recomputed++;
     }

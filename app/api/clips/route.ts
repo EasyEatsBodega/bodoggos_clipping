@@ -148,6 +148,7 @@ export async function POST(req: Request) {
       cpm_rate_snapshot: effectiveCpm,
       max_payout_snapshot: effectiveMax,
       flat_fee_snapshot: effectiveFlat,
+      min_views_snapshot: campaign.min_views ?? null,
       x_author_id: lookup.authorId || null,
     })
     .select()

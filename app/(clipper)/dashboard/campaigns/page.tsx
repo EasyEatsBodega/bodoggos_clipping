@@ -98,6 +98,11 @@ export default async function ClipperCampaignsPage() {
                       <div>{remaining != null ? `${fmtUsd(remaining)} left` : "uncapped"}</div>
                     </div>
                   </div>
+                  {c.min_views != null && c.min_views > 0 && (
+                    <div className="font-mono text-[10px] text-text-3">
+                      min {c.min_views.toLocaleString()} views to earn
+                    </div>
+                  )}
                   {c.ends_at && (
                     <div className="font-mono text-[10px] text-text-3">
                       ends {new Date(c.ends_at).toISOString().slice(0, 10)}
