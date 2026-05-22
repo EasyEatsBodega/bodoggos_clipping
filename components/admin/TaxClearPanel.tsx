@@ -8,6 +8,7 @@ type Info = {
   legal_first_name: string;
   legal_last_name: string;
   country: string;
+  email: string;
   submitted_at: string;
   cleared_at: string | null;
 } | null;
@@ -89,6 +90,12 @@ export function TaxClearPanel({
             <div>
               <span className="text-text-3">// country: </span>
               {info.country}
+            </div>
+            <div>
+              <span className="text-text-3">// send forms to: </span>
+              <a href={`mailto:${info.email}`} className="text-accent hover:underline">
+                {info.email}
+              </a>
             </div>
             <div className="text-text-3">
               submitted {new Date(info.submitted_at).toISOString().slice(0, 10)}

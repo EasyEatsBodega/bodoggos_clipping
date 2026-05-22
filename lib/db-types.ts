@@ -97,6 +97,7 @@ export type ClipperTaxInfo = {
   legal_first_name: string;
   legal_last_name: string;
   country: string;
+  email: string;
   submitted_at: string;
   cleared_at: string | null;
   cleared_by: string | null;

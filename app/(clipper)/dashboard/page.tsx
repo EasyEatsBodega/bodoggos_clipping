@@ -78,7 +78,11 @@ export default async function DashboardPage() {
       <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         {taxStatus.needsSubmission && (
-          <TaxComplianceNotice state="needs_submission" taxYear={taxYear} />
+          <TaxComplianceNotice
+            state="needs_submission"
+            taxYear={taxYear}
+            defaultEmail={clipper.email ?? user.email ?? ""}
+          />
         )}
         {taxStatus.awaitingClearance && (
           <TaxComplianceNotice state="awaiting_clearance" taxYear={taxYear} />

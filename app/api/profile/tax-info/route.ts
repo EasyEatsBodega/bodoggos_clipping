@@ -44,6 +44,7 @@ export async function POST(req: Request) {
       legal_first_name: parsed.data.legal_first_name,
       legal_last_name: parsed.data.legal_last_name,
       country: parsed.data.country,
+      email: parsed.data.email,
       submitted_at: new Date().toISOString(),
     },
     { onConflict: "clipper_id,tax_year" },

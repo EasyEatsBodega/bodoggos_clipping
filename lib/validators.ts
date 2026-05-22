@@ -61,6 +61,7 @@ export const taxInfoSchema = z.object({
   legal_first_name: z.string().trim().min(1).max(100),
   legal_last_name: z.string().trim().min(1).max(100),
   country: z.string().trim().min(2).max(60),
+  email: z.string().trim().email().max(254),
 });
 
 export const walletSchema = z.object({

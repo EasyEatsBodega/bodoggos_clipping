@@ -11,14 +11,17 @@ import { Button } from "@/components/ui/Button";
 export function TaxComplianceNotice({
   state,
   taxYear,
+  defaultEmail = "",
 }: {
   state: "needs_submission" | "awaiting_clearance";
   taxYear: number;
+  defaultEmail?: string;
 }) {
   const router = useRouter();
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [country, setCountry] = useState("");
+  const [email, setEmail] = useState(defaultEmail);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +51,7 @@ export function TaxComplianceNotice({
         legal_first_name: first,
         legal_last_name: last,
         country,
+        email,
       }),
     });
     setBusy(false);
@@ -66,8 +70,8 @@ export function TaxComplianceNotice({
     >
       <p className="font-mono text-xs text-text-2">
         <span className="text-danger">// tax info required —</span> you&apos;ve earned $600 or
-        more in {taxYear}, so we need your legal details to send compliant tax forms. Payouts
-        are paused until this is completed.
+        more in {taxYear}, so we need your legal details and an email where we can send your
+        tax forms. Payouts are paused until this is completed.
       </p>
       <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Input
@@ -92,8 +96,22 @@ export function TaxComplianceNotice({
           value={country}
           onChange={(e) => setCountry(e.target.value)}
         />
+        <Input
+          id="tax-email"
+          label="email for tax forms"
+          type="email"
+          required
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="md:col-span-3"
+        />
         <div className="md:col-span-3 flex items-center gap-3">
-          <Button variant="primary" type="submit" disabled={busy || !first || !last || !country}>
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={busy || !first || !last || !country || !email}
+          >
             {busy ? "Submitting…" : "Submit tax info"}
           </Button>
           {error && <span className="font-mono text-xs text-danger">{error}</span>}
