@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/admin/tags", label: "tags" },
   { href: "/admin/flags", label: "flags" },
   { href: "/admin/payouts", label: "payouts" },
+  { href: "/admin/tax", label: "tax" },
   { href: "/admin/admins", label: "admins" },
   { href: "/admin/campaigns", label: "campaigns" },
 ] as const;

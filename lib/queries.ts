@@ -1,11 +1,82 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { billableImpressions, computePayoutAmount, sumNumeric } from "./payout-calc";
 import {
+  computeTaxStatus,
   currentTaxYear,
   earnedCentsInYear,
   paidCentsInYear,
   payoutBlocked,
 } from "./tax-compliance";
+
+export type TaxComplianceState = "needs_submission" | "awaiting_clearance" | "cleared";
+
+export type TaxComplianceRow = {
+  clipperId: string;
+  xHandle: string;
+  accountEmail: string;
+  earnedCents: number;
+  state: TaxComplianceState;
+  legalName: string | null;
+  country: string | null;
+  taxEmail: string | null;
+  submittedAt: string | null;
+  clearedAt: string | null;
+};
+
+// Every clipper relevant to tax compliance for a year: those who have reached
+// the $600 threshold and/or have submitted tax info. Sorted so the ones that
+// need action (submission, then clearance) come first.
+export async function getTaxComplianceRows(
+  supabase: SupabaseClient,
+  year: number,
+): Promise<TaxComplianceRow[]> {
+  const [{ data: clippers }, { data: clips }, { data: infos }] = await Promise.all([
+    supabase.from("clippers").select("id, x_handle, email"),
+    supabase.from("clips").select("clipper_id, status, payout_amount, tracking_until"),
+    supabase.from("clipper_tax_info").select("*").eq("tax_year", year),
+  ]);
+
+  const clipsByClipper = new Map<string, typeof clips>();
+  for (const c of clips ?? []) {
+    const arr = clipsByClipper.get(c.clipper_id) ?? [];
+    arr.push(c);
+    clipsByClipper.set(c.clipper_id, arr);
+  }
+  const infoByClipper = new Map<string, NonNullable<typeof infos>[number]>();
+  for (const i of infos ?? []) infoByClipper.set(i.clipper_id, i);
+
+  const rows: TaxComplianceRow[] = [];
+  for (const cl of clippers ?? []) {
+    const info = infoByClipper.get(cl.id) ?? null;
+    const earnedCents = earnedCentsInYear(clipsByClipper.get(cl.id) ?? [], year);
+    const status = computeTaxStatus(earnedCents, info, year);
+    if (!status.thresholdReached && !info) continue;
+    rows.push({
+      clipperId: cl.id,
+      xHandle: cl.x_handle,
+      accountEmail: cl.email,
+      earnedCents,
+      state: status.cleared
+        ? "cleared"
+        : status.submitted
+          ? "awaiting_clearance"
+          : "needs_submission",
+      legalName: info ? `${info.legal_first_name} ${info.legal_last_name}` : null,
+      country: info?.country ?? null,
+      taxEmail: info?.email ?? null,
+      submittedAt: info?.submitted_at ?? null,
+      clearedAt: info?.cleared_at ?? null,
+    });
+  }
+
+  const order: Record<TaxComplianceState, number> = {
+    needs_submission: 0,
+    awaiting_clearance: 1,
+    cleared: 2,
+  };
+  rows.sort((a, b) => order[a.state] - order[b.state] || b.earnedCents - a.earnedCents);
+  return rows;
+}
 
 // Returns whether a payout to this clipper must be blocked for tax compliance
 // (they've reached the $600/year threshold and aren't cleared). Used by both
