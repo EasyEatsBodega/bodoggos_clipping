@@ -3,7 +3,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { solanaPayoutConfirmSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { snapshotClipMarks } from "@/lib/queries";
+import { checkPayoutTaxHold, snapshotClipMarks } from "@/lib/queries";
 import {
   USDC_DECIMALS,
   USDC_MINT,
@@ -45,6 +45,9 @@ export async function POST(req: Request) {
   if (!clipper.solana_wallet) {
     return NextResponse.json({ error: "clipper has no Solana wallet on file" }, { status: 400 });
   }
+
+  const hold = await checkPayoutTaxHold(auth.admin, clipper.id, parsed.data.amount);
+  if (hold.blocked) return NextResponse.json({ error: hold.reason }, { status: 403 });
 
   let recipient: PublicKey;
   try {

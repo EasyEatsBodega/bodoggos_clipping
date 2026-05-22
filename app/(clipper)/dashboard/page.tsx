@@ -7,6 +7,8 @@ import { ClipperNav } from "@/components/clipper/ClipperNav";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getActiveCampaigns, getClipperKpis } from "@/lib/queries";
 import { fmtInt, fmtUsd } from "@/lib/format";
+import { TaxComplianceNotice } from "@/components/clipper/TaxComplianceNotice";
+import { computeTaxStatus, currentTaxYear, earnedCentsInYear } from "@/lib/tax-compliance";
 import type { Campaign, Clip } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
@@ -24,16 +26,30 @@ export default async function DashboardPage() {
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
 
-  const [{ data: clips }, kpis, campaigns, { data: enrollments }] = await Promise.all([
-    supabase
-      .from("clips")
-      .select("*")
-      .eq("clipper_id", user.id)
-      .order("submitted_at", { ascending: false }),
-    getClipperKpis(supabase, user.id),
-    getActiveCampaigns(supabase) as Promise<Campaign[]>,
-    supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
-  ]);
+  const taxYear = currentTaxYear();
+  const [{ data: clips }, kpis, campaigns, { data: enrollments }, { data: taxInfo }] =
+    await Promise.all([
+      supabase
+        .from("clips")
+        .select("*")
+        .eq("clipper_id", user.id)
+        .order("submitted_at", { ascending: false }),
+      getClipperKpis(supabase, user.id),
+      getActiveCampaigns(supabase) as Promise<Campaign[]>,
+      supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
+      supabase
+        .from("clipper_tax_info")
+        .select("legal_first_name, legal_last_name, country, submitted_at, cleared_at")
+        .eq("clipper_id", user.id)
+        .eq("tax_year", taxYear)
+        .maybeSingle(),
+    ]);
+
+  const taxStatus = computeTaxStatus(
+    earnedCentsInYear(clips ?? [], taxYear),
+    taxInfo ?? null,
+    taxYear,
+  );
 
   const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
   const enrolledCampaigns = campaigns.filter((c) => enrolledIds.has(c.id));
@@ -61,6 +77,13 @@ export default async function DashboardPage() {
       />
       <ClipperNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
+        {taxStatus.needsSubmission && (
+          <TaxComplianceNotice state="needs_submission" taxYear={taxYear} />
+        )}
+        {taxStatus.awaitingClearance && (
+          <TaxComplianceNotice state="awaiting_clearance" taxYear={taxYear} />
+        )}
+
         {flaggedClips.length > 0 && (
           <div
             className="border px-4 py-3 flex flex-col gap-1"

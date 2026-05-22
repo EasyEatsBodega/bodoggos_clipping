@@ -17,7 +17,9 @@ import { BottingButton } from "@/components/admin/BottingButton";
 import { AltHandlesPanel } from "@/components/admin/AltHandlesPanel";
 import { PayOverridesForm } from "@/components/admin/PayOverridesForm";
 import { SolanaUsdcPayoutPanel } from "@/components/admin/SolanaUsdcPayoutPanel";
+import { TaxClearPanel } from "@/components/admin/TaxClearPanel";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { computeTaxStatus, currentTaxYear, earnedCentsInYear } from "@/lib/tax-compliance";
 import {
   sumNumeric,
   computePayoutCents,
@@ -37,12 +39,14 @@ export default async function AdminClipperDetailPage({
   const { data: clipper } = await admin.from("clippers").select("*").eq("id", id).maybeSingle();
   if (!clipper) notFound();
 
+  const taxYear = currentTaxYear();
   const [
     { data: clips },
     { data: payouts },
     { data: clipperFlags },
     { data: campaign },
     { data: altHandles },
+    { data: taxInfo },
   ] = await Promise.all([
     admin.from("clips").select("*").eq("clipper_id", id).order("submitted_at", { ascending: false }),
     admin.from("payouts").select("*").eq("clipper_id", id).order("paid_at", { ascending: false }),
@@ -66,6 +70,12 @@ export default async function AdminClipperDetailPage({
       .select("id, x_handle, note, added_at")
       .eq("clipper_id", id)
       .order("added_at", { ascending: true }),
+    admin
+      .from("clipper_tax_info")
+      .select("legal_first_name, legal_last_name, country, submitted_at, cleared_at")
+      .eq("clipper_id", id)
+      .eq("tax_year", taxYear)
+      .maybeSingle(),
   ]);
 
   const clipIdsForMarks = (clips ?? []).map((c) => c.id);
@@ -122,6 +132,13 @@ export default async function AdminClipperDetailPage({
   const inFlight = `${Math.floor(inFlightCents / 100)}.${(inFlightCents % 100)
     .toString()
     .padStart(2, "0")}`;
+
+  const taxStatus = computeTaxStatus(
+    earnedCentsInYear(clips ?? [], taxYear),
+    taxInfo ?? null,
+    taxYear,
+  );
+  const earnedThisYearUsd = (taxStatus.earnedCents / 100).toFixed(2);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -194,13 +211,38 @@ export default async function AdminClipperDetailPage({
           handles={altHandles ?? []}
         />
 
-        <SolanaUsdcPayoutPanel
+        <TaxClearPanel
           clipperId={clipper.id}
-          recipientWallet={clipper.solana_wallet}
-          suggestedAmount={Number(outstanding)}
+          taxYear={taxYear}
+          earnedUsd={earnedThisYearUsd}
+          thresholdReached={taxStatus.thresholdReached}
+          info={taxInfo ?? null}
         />
 
-        <PayoutForm clipperId={clipper.id} suggestedAmount={Number(outstanding)} />
+        {taxStatus.paymentHold ? (
+          <div
+            className="border px-4 py-3"
+            style={{ borderColor: "var(--danger)", background: "rgba(255, 89, 89, 0.08)" }}
+          >
+            <p className="font-mono text-xs text-text-2">
+              <span className="text-danger">// payments on hold —</span> this clipper reached the
+              $600 tax threshold for {taxYear}.{" "}
+              {taxStatus.submitted
+                ? "Clear them above once their tax forms are completed."
+                : "Waiting on them to submit their legal name + country."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <SolanaUsdcPayoutPanel
+              clipperId={clipper.id}
+              recipientWallet={clipper.solana_wallet}
+              suggestedAmount={Number(outstanding)}
+            />
+
+            <PayoutForm clipperId={clipper.id} suggestedAmount={Number(outstanding)} />
+          </>
+        )}
 
         <section className="flex flex-col gap-3">
           <h2 className="label">flags / review queue</h2>

@@ -1,5 +1,49 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { billableImpressions, computePayoutAmount, sumNumeric } from "./payout-calc";
+import {
+  currentTaxYear,
+  earnedCentsInYear,
+  paidCentsInYear,
+  payoutBlocked,
+} from "./tax-compliance";
+
+// Returns whether a payout to this clipper must be blocked for tax compliance
+// (they've reached the $600/year threshold and aren't cleared). Used by both
+// payout-recording endpoints. Uses a service-role client.
+export async function checkPayoutTaxHold(
+  supabase: SupabaseClient,
+  clipperId: string,
+  payoutAmount: number,
+): Promise<{ blocked: boolean; reason?: string }> {
+  const year = currentTaxYear();
+  const [{ data: clips }, { data: payouts }, { data: info }] = await Promise.all([
+    supabase
+      .from("clips")
+      .select("status, payout_amount, tracking_until")
+      .eq("clipper_id", clipperId),
+    supabase.from("payouts").select("amount, paid_at").eq("clipper_id", clipperId),
+    supabase
+      .from("clipper_tax_info")
+      .select("cleared_at")
+      .eq("clipper_id", clipperId)
+      .eq("tax_year", year)
+      .maybeSingle(),
+  ]);
+
+  const cleared = info?.cleared_at != null;
+  const blocked = payoutBlocked({
+    earnedCents: earnedCentsInYear(clips ?? [], year),
+    paidCentsThisYear: paidCentsInYear(payouts ?? [], year),
+    payoutCents: Math.round(payoutAmount * 100),
+    cleared,
+  });
+  if (!blocked) return { blocked: false };
+
+  const reason = info
+    ? `payment on hold: clipper has reached the $600 tax threshold for ${year} and is awaiting tax clearance`
+    : `payment on hold: clipper has reached the $600 tax threshold for ${year} and must submit tax info before being paid`;
+  return { blocked: true, reason };
+}
 
 // Returns every campaign that is admin-flagged active AND inside its date
 // window (if one is set). Sorted newest-first so freshly created campaigns

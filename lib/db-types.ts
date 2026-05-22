@@ -91,6 +91,17 @@ export type CampaignEnrollment = {
   enrolled_at: string;
 };
 
+export type ClipperTaxInfo = {
+  clipper_id: string;
+  tax_year: number;
+  legal_first_name: string;
+  legal_last_name: string;
+  country: string;
+  submitted_at: string;
+  cleared_at: string | null;
+  cleared_by: string | null;
+};
+
 export type ClipperFlag = {
   id: string;
   clipper_id: string;

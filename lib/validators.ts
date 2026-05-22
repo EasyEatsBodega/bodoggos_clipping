@@ -57,6 +57,12 @@ export const altHandleSchema = z.object({
   note: z.string().max(200).optional(),
 });
 
+export const taxInfoSchema = z.object({
+  legal_first_name: z.string().trim().min(1).max(100),
+  legal_last_name: z.string().trim().min(1).max(100),
+  country: z.string().trim().min(2).max(60),
+});
+
 export const walletSchema = z.object({
   solana_wallet: z
     .string()

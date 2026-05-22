@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { payoutSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { snapshotClipMarks } from "@/lib/queries";
+import { checkPayoutTaxHold, snapshotClipMarks } from "@/lib/queries";
 
 export async function POST(req: Request) {
   const auth = await requireAdmin();
@@ -12,6 +12,9 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
+
+  const hold = await checkPayoutTaxHold(auth.admin, parsed.data.clipper_id, parsed.data.amount);
+  if (hold.blocked) return NextResponse.json({ error: hold.reason }, { status: 403 });
 
   const { data: inserted, error } = await auth.admin
     .from("payouts")
