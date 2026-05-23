@@ -40,17 +40,20 @@ export function paidCentsInYear(payouts: PayoutForTax[], year: number): number {
 }
 
 export type TaxInfo = {
-  legal_first_name: string;
-  legal_last_name: string;
-  country: string;
-  submitted_at: string;
+  legal_first_name: string | null;
+  legal_last_name: string | null;
+  country: string | null;
+  email: string | null;
+  submitted_at: string | null;
   cleared_at: string | null;
+  requested_at: string | null;
 } | null;
 
 export type TaxStatus = {
   year: number;
   earnedCents: number;
   thresholdReached: boolean;
+  requested: boolean; // an admin asked them to submit
   submitted: boolean;
   cleared: boolean;
   needsSubmission: boolean; // clipper must fill out the form
@@ -64,16 +67,20 @@ export function computeTaxStatus(
   year: number,
 ): TaxStatus {
   const thresholdReached = earnedCents >= TAX_THRESHOLD_CENTS;
-  const submitted = info != null;
+  const requested = info?.requested_at != null;
+  const submitted = info?.submitted_at != null;
   const cleared = info?.cleared_at != null;
   return {
     year,
     earnedCents,
     thresholdReached,
+    requested,
     submitted,
     cleared,
-    needsSubmission: thresholdReached && !submitted,
+    // The clipper sees the form once they cross $600 OR an admin requests it.
+    needsSubmission: (thresholdReached || requested) && !submitted,
     awaitingClearance: submitted && !cleared,
+    // The hard payment gate stays tied to the legal $600 threshold.
     paymentHold: thresholdReached && !cleared,
   };
 }

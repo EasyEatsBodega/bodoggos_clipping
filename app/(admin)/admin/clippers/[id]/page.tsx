@@ -72,7 +72,7 @@ export default async function AdminClipperDetailPage({
       .order("added_at", { ascending: true }),
     admin
       .from("clipper_tax_info")
-      .select("legal_first_name, legal_last_name, country, email, submitted_at, cleared_at")
+      .select("legal_first_name, legal_last_name, country, email, submitted_at, cleared_at, requested_at")
       .eq("clipper_id", id)
       .eq("tax_year", taxYear)
       .maybeSingle(),

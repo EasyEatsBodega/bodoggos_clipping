@@ -39,7 +39,7 @@ export default async function DashboardPage() {
       supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
       supabase
         .from("clipper_tax_info")
-        .select("legal_first_name, legal_last_name, country, submitted_at, cleared_at")
+        .select("legal_first_name, legal_last_name, country, email, submitted_at, cleared_at, requested_at")
         .eq("clipper_id", user.id)
         .eq("tax_year", taxYear)
         .maybeSingle(),
@@ -82,6 +82,7 @@ export default async function DashboardPage() {
             state="needs_submission"
             taxYear={taxYear}
             defaultEmail={clipper.email ?? user.email ?? ""}
+            paymentHold={taxStatus.paymentHold}
           />
         )}
         {taxStatus.awaitingClearance && (

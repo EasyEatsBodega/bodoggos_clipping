@@ -6,6 +6,8 @@ import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { computePayoutCents, computeRollingOwedCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { RowPayButton } from "@/components/admin/RowPayButton";
+import { TaxRequestButton, type TaxRowState } from "@/components/admin/TaxRequestButton";
+import { currentTaxYear } from "@/lib/tax-compliance";
 
 export const dynamic = "force-dynamic";
 
@@ -87,12 +89,14 @@ export default async function AdminClippersPage({
     );
   }
 
+  const taxYear = currentTaxYear();
   const [
     { data: clippers },
     { data: clips },
     { data: payouts },
     { data: openFlags },
     { data: marks },
+    { data: taxInfos },
   ] = await Promise.all([
     clippersQ,
     admin
@@ -105,7 +109,19 @@ export default async function AdminClippersPage({
     admin
       .from("payout_clip_marks")
       .select("clip_id, impressions_at_mark"),
+    admin
+      .from("clipper_tax_info")
+      .select("clipper_id, submitted_at, cleared_at, requested_at")
+      .eq("tax_year", taxYear),
   ]);
+
+  const taxState = new Map<string, TaxRowState>();
+  for (const t of taxInfos ?? []) {
+    taxState.set(
+      t.clipper_id,
+      t.cleared_at ? "cleared" : t.submitted_at ? "submitted" : "requested",
+    );
+  }
 
   const flagCount = new Map<string, number>();
   for (const f of openFlags ?? []) {
@@ -287,6 +303,7 @@ export default async function AdminClippersPage({
               <SortTH base={baseParams} col="paid" sortCol={sortCol} sortDir={sortDir}>paid</SortTH>
               <SortTH base={baseParams} col="outstanding" sortCol={sortCol} sortDir={sortDir}>owed now</SortTH>
               <SortTH base={baseParams} col="status" sortCol={sortCol} sortDir={sortDir}>status</SortTH>
+              <TH>tax</TH>
               <TH>pay</TH>
             </THead>
             <TBody>
@@ -346,6 +363,9 @@ export default async function AdminClippersPage({
                     )}
                   </TD>
                   <TD>
+                    <TaxRequestButton clipperId={r.id} state={taxState.get(r.id) ?? "none"} />
+                  </TD>
+                  <TD>
                     <RowPayButton
                       clipperId={r.id}
                       handle={r.x_handle}
@@ -358,7 +378,7 @@ export default async function AdminClippersPage({
               {rows.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

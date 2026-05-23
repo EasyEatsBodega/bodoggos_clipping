@@ -61,9 +61,9 @@ export async function getTaxComplianceRows(
         : status.submitted
           ? "awaiting_clearance"
           : "needs_submission",
-      legalName: info ? `${info.legal_first_name} ${info.legal_last_name}` : null,
-      country: info?.country ?? null,
-      taxEmail: info?.email ?? null,
+      legalName: status.submitted ? `${info!.legal_first_name} ${info!.legal_last_name}` : null,
+      country: status.submitted ? (info!.country ?? null) : null,
+      taxEmail: status.submitted ? (info!.email ?? null) : null,
       submittedAt: info?.submitted_at ?? null,
       clearedAt: info?.cleared_at ?? null,
     });
@@ -95,7 +95,7 @@ export async function checkPayoutTaxHold(
     supabase.from("payouts").select("amount, paid_at").eq("clipper_id", clipperId),
     supabase
       .from("clipper_tax_info")
-      .select("cleared_at")
+      .select("cleared_at, submitted_at")
       .eq("clipper_id", clipperId)
       .eq("tax_year", year)
       .maybeSingle(),
@@ -110,7 +110,7 @@ export async function checkPayoutTaxHold(
   });
   if (!blocked) return { blocked: false };
 
-  const reason = info
+  const reason = info?.submitted_at
     ? `payment on hold: clipper has reached the $600 tax threshold for ${year} and is awaiting tax clearance`
     : `payment on hold: clipper has reached the $600 tax threshold for ${year} and must submit tax info before being paid`;
   return { blocked: true, reason };

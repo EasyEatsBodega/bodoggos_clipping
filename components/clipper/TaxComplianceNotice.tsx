@@ -12,10 +12,12 @@ export function TaxComplianceNotice({
   state,
   taxYear,
   defaultEmail = "",
+  paymentHold = false,
 }: {
   state: "needs_submission" | "awaiting_clearance";
   taxYear: number;
   defaultEmail?: string;
+  paymentHold?: boolean;
 }) {
   const router = useRouter();
   const [first, setFirst] = useState("");
@@ -69,9 +71,10 @@ export function TaxComplianceNotice({
       style={{ borderColor: "var(--danger)", background: "rgba(255, 89, 89, 0.08)" }}
     >
       <p className="font-mono text-xs text-text-2">
-        <span className="text-danger">// tax info required —</span> you&apos;ve earned $600 or
-        more in {taxYear}, so we need your legal details and an email where we can send your
-        tax forms. Payouts are paused until this is completed.
+        <span className="text-danger">// tax info required —</span>{" "}
+        {paymentHold
+          ? `you've earned $600 or more in ${taxYear}, so we need your legal details and an email where we can send your tax forms. Payouts are paused until this is completed.`
+          : `we need your legal details and an email on file for ${taxYear} tax forms. Please add them below so your payouts aren't held up later.`}
       </p>
       <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Input

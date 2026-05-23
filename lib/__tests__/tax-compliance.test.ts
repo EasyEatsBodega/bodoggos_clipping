@@ -37,6 +37,17 @@ describe("paidCentsInYear", () => {
   });
 });
 
+const info = (over: Partial<NonNullable<Parameters<typeof computeTaxStatus>[1]>> = {}) => ({
+  legal_first_name: null,
+  legal_last_name: null,
+  country: null,
+  email: null,
+  submitted_at: null,
+  cleared_at: null,
+  requested_at: null,
+  ...over,
+});
+
 describe("computeTaxStatus", () => {
   it("below threshold → no requirement, no hold", () => {
     const s = computeTaxStatus(59_900, null, 2026);
@@ -52,17 +63,22 @@ describe("computeTaxStatus", () => {
     expect(s.paymentHold).toBe(true);
   });
 
+  it("admin requested below threshold → needs submission, no payment hold", () => {
+    const s = computeTaxStatus(10_000, info({ requested_at: "2026-01-01" }), 2026);
+    expect(s.requested).toBe(true);
+    expect(s.needsSubmission).toBe(true);
+    expect(s.paymentHold).toBe(false);
+  });
+
   it("submitted, not cleared → awaiting clearance + hold", () => {
-    const info = { legal_first_name: "A", legal_last_name: "B", country: "US", submitted_at: "x", cleared_at: null };
-    const s = computeTaxStatus(70_000, info, 2026);
+    const s = computeTaxStatus(70_000, info({ submitted_at: "x" }), 2026);
     expect(s.needsSubmission).toBe(false);
     expect(s.awaitingClearance).toBe(true);
     expect(s.paymentHold).toBe(true);
   });
 
   it("cleared → no hold", () => {
-    const info = { legal_first_name: "A", legal_last_name: "B", country: "US", submitted_at: "x", cleared_at: "y" };
-    const s = computeTaxStatus(120_000, info, 2026);
+    const s = computeTaxStatus(120_000, info({ submitted_at: "x", cleared_at: "y" }), 2026);
     expect(s.cleared).toBe(true);
     expect(s.paymentHold).toBe(false);
   });
