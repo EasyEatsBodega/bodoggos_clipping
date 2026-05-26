@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cumulativeImpressions } from "../chart-data";
+import { cumulativeAverage, cumulativeImpressions, type DailyPoint } from "../chart-data";
 
 const start = new Date("2026-05-01T00:00:00.000Z");
 const end = new Date("2026-05-03T00:00:00.000Z");
@@ -43,5 +43,33 @@ describe("cumulativeImpressions", () => {
     for (let i = 1; i < out.length; i++) {
       expect(out[i].value).toBeGreaterThanOrEqual(out[i - 1].value);
     }
+  });
+});
+
+describe("cumulativeAverage", () => {
+  const numerator: DailyPoint[] = [
+    { date: "2026-05-01", value: 100 },
+    { date: "2026-05-02", value: 600 },
+    { date: "2026-05-03", value: 900 },
+  ];
+  const clip = (day: string) => ({ submitted_at: `2026-05-${day}T08:00:00.000Z` });
+
+  it("divides cumulative numerator by cumulative row count per bucket", () => {
+    const clips = [clip("01"), clip("02"), clip("02"), clip("03")];
+    const out = cumulativeAverage(numerator, clips, (c) => c.submitted_at, "day");
+    // day1: 100/1, day2: 600/3, day3: 900/4
+    expect(out.map((p) => p.value)).toEqual([100, 200, 225]);
+  });
+
+  it("yields 0 for buckets before any row exists", () => {
+    const clips = [clip("03")];
+    const out = cumulativeAverage(numerator, clips, (c) => c.submitted_at, "day");
+    expect(out.map((p) => p.value)).toEqual([0, 0, 900]);
+  });
+
+  it("final point equals total numerator / total rows", () => {
+    const clips = [clip("01"), clip("02"), clip("03")];
+    const out = cumulativeAverage(numerator, clips, (c) => c.submitted_at, "day");
+    expect(out[out.length - 1].value).toBe(Math.round(900 / 3));
   });
 });

@@ -161,3 +161,31 @@ export function cumulativeImpressions(
   }
   return out;
 }
+
+// Running average over time: at each bucket the value is the cumulative
+// numerator (e.g. total impressions so far) divided by the cumulative count of
+// `rows` whose date falls on or before that bucket (e.g. clips submitted so
+// far). Aligned to the buckets of `numerator`. Used for "avg impressions per
+// clip over time" — the final point equals total impressions / total clips.
+export function cumulativeAverage<T>(
+  numerator: DailyPoint[],
+  rows: T[],
+  getDate: (row: T) => string | null | undefined,
+  g: Granularity = "day",
+): DailyPoint[] {
+  const times = rows
+    .map((r) => {
+      const d = getDate(r);
+      return d ? new Date(d).getTime() : NaN;
+    })
+    .filter((t) => Number.isFinite(t))
+    .sort((a, b) => a - b);
+
+  let cursor = 0;
+  return numerator.map((p) => {
+    const endMs = bucketEndMs(p.date, g);
+    while (cursor < times.length && times[cursor] <= endMs) cursor++;
+    return { date: p.date, value: cursor > 0 ? Math.round(p.value / cursor) : 0 };
+  });
+}
+

@@ -6,7 +6,12 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { OverviewCharts } from "@/components/admin/OverviewCharts";
-import { bucketCount, cumulativeImpressions, type Granularity } from "@/lib/chart-data";
+import {
+  bucketCount,
+  cumulativeAverage,
+  cumulativeImpressions,
+  type Granularity,
+} from "@/lib/chart-data";
 
 export const dynamic = "force-dynamic";
 
@@ -185,6 +190,14 @@ export default async function AdminOverviewPage({
     granularity,
     totalImpressions,
   );
+  // Running avg impressions per clip: cumulative impressions / cumulative clips
+  // submitted so far. The final point matches the avg/clip KPI above.
+  const avgPerClipSeries = cumulativeAverage(
+    impressionsSeries,
+    clips ?? [],
+    (c) => c.submitted_at,
+    granularity,
+  );
 
   // Leaderboards (impressions-ranked; money lives on the payouts page).
   const byClipper = new Map<string, { impressions: number }>();
@@ -316,6 +329,7 @@ export default async function AdminOverviewPage({
           impressions={impressionsSeries}
           clipsSubmitted={clipsSubmittedSeries}
           newClippersPerDay={newClippersSeries}
+          avgPerClip={avgPerClipSeries}
           granularity={granularity}
         />
 

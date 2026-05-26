@@ -19,11 +19,13 @@ export function OverviewCharts({
   impressions,
   clipsSubmitted,
   newClippersPerDay,
+  avgPerClip,
   granularity = "day",
 }: {
   impressions: DailyPoint[];
   clipsSubmitted: DailyPoint[];
   newClippersPerDay: DailyPoint[];
+  avgPerClip: DailyPoint[];
   granularity?: Granularity;
 }) {
   const per = granularity === "hour" ? "per hour" : "per day";
@@ -70,6 +72,22 @@ export function OverviewCharts({
               type="monotone"
               dataKey="value"
               stroke="var(--accent)"
+              strokeWidth={1.5}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="avg impressions per clip" subtitle="running total impressions ÷ clips">
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={avgPerClip} margin={chartMargin}>
+            {commonAxes(avgPerClip)}
+            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="var(--admin)"
               strokeWidth={1.5}
               dot={false}
             />
