@@ -33,6 +33,7 @@ type SortCol =
   | "joined"
   | "clips"
   | "impressions"
+  | "avg_clip"
   | "earned"
   | "in_flight"
   | "paid"
@@ -45,6 +46,7 @@ const VALID_SORT: SortCol[] = [
   "joined",
   "clips",
   "impressions",
+  "avg_clip",
   "earned",
   "in_flight",
   "paid",
@@ -298,6 +300,7 @@ export default async function AdminClippersPage({
               <SortTH base={baseParams} col="joined" sortCol={sortCol} sortDir={sortDir}>joined</SortTH>
               <SortTH base={baseParams} col="clips" sortCol={sortCol} sortDir={sortDir}>clips</SortTH>
               <SortTH base={baseParams} col="impressions" sortCol={sortCol} sortDir={sortDir}>impressions</SortTH>
+              <SortTH base={baseParams} col="avg_clip" sortCol={sortCol} sortDir={sortDir}>avg views / clip</SortTH>
               <SortTH base={baseParams} col="earned" sortCol={sortCol} sortDir={sortDir}>earned</SortTH>
               <SortTH base={baseParams} col="in_flight" sortCol={sortCol} sortDir={sortDir}>in-flight</SortTH>
               <SortTH base={baseParams} col="paid" sortCol={sortCol} sortDir={sortDir}>paid</SortTH>
@@ -335,6 +338,9 @@ export default async function AdminClippersPage({
                   <TD className="font-mono text-xs text-text-2">{fmtRelative(r.joined_at)}</TD>
                   <TD className="num">{fmtInt(r.s.clips)}</TD>
                   <TD className="num">{fmtInt(r.s.impressions)}</TD>
+                  <TD className="num">
+                    {fmtInt(r.s.clips > 0 ? Math.round(r.s.impressions / r.s.clips) : 0)}
+                  </TD>
                   <TD className="num">{fmtUsd((r.s.earnedCents / 100).toFixed(2))}</TD>
                   <TD className="num text-text-2">
                     <span title="estimate from clips still tracking">
@@ -378,7 +384,7 @@ export default async function AdminClippersPage({
               {rows.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clippers match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
@@ -410,6 +416,10 @@ function cmpRows(a: Row, b: Row, col: SortCol): number {
       return a.s.clips - b.s.clips;
     case "impressions":
       return a.s.impressions - b.s.impressions;
+    case "avg_clip": {
+      const avg = (s: ClipperStats) => (s.clips > 0 ? s.impressions / s.clips : 0);
+      return avg(a.s) - avg(b.s);
+    }
     case "earned":
       return a.s.earnedCents - b.s.earnedCents;
     case "in_flight":

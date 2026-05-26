@@ -183,7 +183,7 @@ export default async function AdminClipperDetailPage({
           <StatCell label="clips" value={fmtInt(clips?.length ?? 0)} />
           <StatCell label="impressions" value={fmtInt(totalImpressions)} />
           <StatCell
-            label="avg / clip"
+            label="avg views / clip"
             value={fmtInt(
               (clips?.length ?? 0) > 0 ? Math.round(totalImpressions / clips!.length) : 0,
             )}
