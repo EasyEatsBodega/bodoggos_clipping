@@ -182,6 +182,12 @@ export default async function AdminClipperDetailPage({
         <StatGrid>
           <StatCell label="clips" value={fmtInt(clips?.length ?? 0)} />
           <StatCell label="impressions" value={fmtInt(totalImpressions)} />
+          <StatCell
+            label="avg / clip"
+            value={fmtInt(
+              (clips?.length ?? 0) > 0 ? Math.round(totalImpressions / clips!.length) : 0,
+            )}
+          />
           <StatCell label="earned (finalized)" value={fmtUsd(earned)} accent="accent" />
           <StatCell label="in-flight (estimate)" value={`~${fmtUsd(inFlight)}`} />
           <StatCell label="paid" value={fmtUsd(paid)} />

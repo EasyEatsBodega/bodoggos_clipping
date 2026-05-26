@@ -124,6 +124,12 @@ export default async function DashboardPage() {
         <StatGrid>
           <StatCell label="clips" value={fmtInt(kpis.totalClips)} />
           <StatCell label="impressions" value={fmtInt(kpis.totalImpressions)} />
+          <StatCell
+            label="avg / clip"
+            value={fmtInt(
+              kpis.totalClips > 0 ? Math.round(kpis.totalImpressions / kpis.totalClips) : 0,
+            )}
+          />
           <StatCell label="earned" value={fmtUsd(kpis.totalEarned)} accent="accent" />
           <StatCell
             label="outstanding"
