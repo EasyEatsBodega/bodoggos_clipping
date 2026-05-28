@@ -66,11 +66,11 @@ header `x-api-key: <CLIPS_API_KEY>` is also accepted).
 
 ```bash
 # Filter by partner (slug or label, case-insensitive)
-curl "https://<your-domain>/api/admin/clips?partner=acme" \
+curl "https://flickclip.io/api/admin/clips?partner=acme" \
   -H "Authorization: Bearer $CLIPS_API_KEY"
 
 # Or pass the partner in a JSON body
-curl "https://<your-domain>/api/admin/clips" \
+curl "https://flickclip.io/api/admin/clips" \
   -H "Authorization: Bearer $CLIPS_API_KEY" \
   -H "content-type: application/json" \
   -d '{"partner":"acme"}'
