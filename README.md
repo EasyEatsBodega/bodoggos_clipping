@@ -55,6 +55,47 @@ npm test            # vitest (URL parser, payout calc, poll cadence)
 - `/admin`, `/admin/clippers`, `/admin/clippers/[id]`, `/admin/clips`, `/admin/payouts`, `/admin/config`
 - `/api/cron/poll-clips` (Vercel Cron, hourly)
 - `/api/cron/finalize-clips` (Vercel Cron, daily at 01:00 UTC)
+- `/api/admin/clips` (machine-to-machine read API — see below)
+
+## Clips tracking API
+
+Read-only endpoint for external tools (e.g. the deliverable tracker) to pull
+clips for a partner. Auth is a static bearer secret — set `CLIPS_API_KEY` in
+the environment and send it as `Authorization: Bearer <CLIPS_API_KEY>` (the
+header `x-api-key: <CLIPS_API_KEY>` is also accepted).
+
+```bash
+# Filter by partner (slug or label, case-insensitive)
+curl "https://flickclip.io/api/admin/clips?partner=acme" \
+  -H "Authorization: Bearer $CLIPS_API_KEY"
+
+# Or pass the partner in a JSON body
+curl "https://flickclip.io/api/admin/clips" \
+  -H "Authorization: Bearer $CLIPS_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"partner":"acme"}'
+```
+
+Omit `partner` to return all clips. Rejected clips are always excluded.
+Response:
+
+```json
+{
+  "partner": "Acme",
+  "count": 2,
+  "clips": [
+    {
+      "handle": "someclipper",
+      "submission_date": "2026-05-20T18:03:11.000Z",
+      "tweet_link": "https://x.com/someclipper/status/123",
+      "creator": "Jane Doe",
+      "partner": "Acme"
+    }
+  ]
+}
+```
+
+An unknown partner returns `404` with the list of `available_partners`.
 
 ## Deploying
 
