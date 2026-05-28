@@ -93,6 +93,7 @@ async function handle(req: Request): Promise<NextResponse> {
   let clipQuery = admin
     .from("clips")
     .select("id, url, submitted_at, clipper:clippers(x_handle)")
+    .neq("status", "rejected")
     .order("submitted_at", { ascending: false });
   if (clipIdFilter) clipQuery = clipQuery.in("id", clipIdFilter);
 

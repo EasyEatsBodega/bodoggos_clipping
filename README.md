@@ -76,7 +76,8 @@ curl "https://flickclip.io/api/admin/clips" \
   -d '{"partner":"acme"}'
 ```
 
-Omit `partner` to return all clips. Response:
+Omit `partner` to return all clips. Rejected clips are always excluded.
+Response:
 
 ```json
 {
