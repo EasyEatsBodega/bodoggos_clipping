@@ -56,20 +56,25 @@ export async function GET(req: NextRequest) {
   const syntheticEmail = `${xUserId}@x-clipper.local`;
   const email = existing?.email ?? syntheticEmail;
 
-  // Upsert auth user. We use admin.createUser; if exists, we ignore the conflict.
-  let authUserId: string | null = null;
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: { x_user_id: xUserId, x_handle: handle },
-  });
-  if (created?.user) {
-    authUserId = created.user.id;
-  } else if (createErr) {
-    // Try to find by email
-    const { data: list } = await admin.auth.admin.listUsers();
-    const found = list?.users.find((u) => u.email === email);
-    if (found) authUserId = found.id;
+  // Resolve the auth.users row to sign them into. A clipper row's id is always
+  // the auth user id (set on insert here and in onboarding), so when we already
+  // know the clipper we can use it directly and skip the create/lookup dance.
+  let authUserId: string | null = existing?.id ?? null;
+  if (!authUserId) {
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { x_user_id: xUserId, x_handle: handle },
+    });
+    if (created?.user) {
+      authUserId = created.user.id;
+    } else {
+      // Email already has an auth user but no clipper row (orphan/race). Find it.
+      authUserId = await findAuthUserIdByEmail(admin, email);
+      if (!authUserId) {
+        console.error("x_user: createUser failed and no auth user found", createErr);
+      }
+    }
   }
   if (!authUserId) {
     return NextResponse.redirect(new URL("/?auth_error=x_user", url.origin));
@@ -141,4 +146,23 @@ export async function GET(req: NextRequest) {
   res.cookies.delete("x_oauth_state");
   res.cookies.delete("x_oauth_verifier");
   return res;
+}
+
+// listUsers() is paginated (50/page by default), so a naive first-page scan
+// misses anyone past the first page. Page through until we find the email.
+async function findAuthUserIdByEmail(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  email: string,
+): Promise<string | null> {
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) {
+      console.error("findAuthUserIdByEmail listUsers error", error);
+      return null;
+    }
+    const found = data.users.find((u) => u.email === email);
+    if (found) return found.id;
+    if (data.users.length < 1000) break;
+  }
+  return null;
 }
