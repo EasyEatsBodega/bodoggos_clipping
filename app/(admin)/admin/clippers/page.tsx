@@ -8,6 +8,7 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { RowPayButton } from "@/components/admin/RowPayButton";
 import { TaxRequestButton, type TaxRowState } from "@/components/admin/TaxRequestButton";
 import { currentTaxYear } from "@/lib/tax-compliance";
+import { fetchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -78,43 +79,93 @@ export default async function AdminClippersPage({
 
   const admin = createSupabaseAdminClient();
 
-  let clippersQ = admin.from("clippers").select("*");
-  if (q) {
-    const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
-    clippersQ = clippersQ.or(`x_handle.ilike.${like},email.ilike.${like}`);
-  }
-  if (statusFilter === "active") clippersQ = clippersQ.eq("banned", false);
-  if (statusFilter === "banned") clippersQ = clippersQ.eq("banned", true);
-  if (onlyCustom) {
-    clippersQ = clippersQ.or(
-      "flat_fee_per_clip.gt.0,cpm_rate_override.not.is.null,max_payout_override.not.is.null",
-    );
-  }
+  const like = q ? `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%` : null;
+
+  // Each unbounded select capped at 1000 rows by Postgrest, which silently
+  // truncates accounting data once any table grows past the cap. The marks
+  // truncation in particular caused paid clippers to keep showing as fully
+  // owed (double-pay risk), so every list-driving query is paged.
+  const buildClippers = (from: number, to: number) => {
+    let qb = admin.from("clippers").select("*");
+    if (like) qb = qb.or(`x_handle.ilike.${like},email.ilike.${like}`);
+    if (statusFilter === "active") qb = qb.eq("banned", false);
+    if (statusFilter === "banned") qb = qb.eq("banned", true);
+    if (onlyCustom) {
+      qb = qb.or(
+        "flat_fee_per_clip.gt.0,cpm_rate_override.not.is.null,max_payout_override.not.is.null",
+      );
+    }
+    return qb.order("id", { ascending: true }).range(from, to);
+  };
 
   const taxYear = currentTaxYear();
-  const [
-    { data: clippers },
-    { data: clips },
-    { data: payouts },
-    { data: openFlags },
-    { data: marks },
-    { data: taxInfos },
-  ] = await Promise.all([
-    clippersQ,
-    admin
-      .from("clips")
-      .select(
-        "id, clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot",
-      ),
-    admin.from("payouts").select("clipper_id, amount"),
-    admin.from("clipper_flags").select("clipper_id").is("resolved_at", null),
-    admin
-      .from("payout_clip_marks")
-      .select("clip_id, impressions_at_mark"),
-    admin
-      .from("clipper_tax_info")
-      .select("clipper_id, submitted_at, cleared_at, requested_at")
-      .eq("tax_year", taxYear),
+  const [clippers, clips, payouts, openFlags, marks, taxInfos] = await Promise.all([
+    fetchAllPages<{
+      id: string;
+      x_handle: string;
+      email: string;
+      solana_wallet: string | null;
+      joined_at: string;
+      banned: boolean;
+      flat_fee_per_clip: string;
+      cpm_rate_override: string | null;
+      max_payout_override: string | null;
+    }>(buildClippers),
+    fetchAllPages<{
+      id: string;
+      clipper_id: string;
+      status: "tracking" | "completed" | "rejected";
+      impressions: number | null;
+      final_impressions: number | null;
+      payout_amount: string | null;
+      cpm_rate_snapshot: string;
+      max_payout_snapshot: string;
+      flat_fee_snapshot: string | null;
+      min_views_snapshot: number | null;
+    }>((from, to) =>
+      admin
+        .from("clips")
+        .select(
+          "id, clipper_id, status, impressions, final_impressions, payout_amount, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot",
+        )
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ clipper_id: string; amount: string }>((from, to) =>
+      admin
+        .from("payouts")
+        .select("clipper_id, amount")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ clipper_id: string }>((from, to) =>
+      admin
+        .from("clipper_flags")
+        .select("clipper_id")
+        .is("resolved_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ clip_id: string; impressions_at_mark: number }>((from, to) =>
+      admin
+        .from("payout_clip_marks")
+        .select("clip_id, impressions_at_mark")
+        .order("clip_id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{
+      clipper_id: string;
+      submitted_at: string | null;
+      cleared_at: string | null;
+      requested_at: string | null;
+    }>((from, to) =>
+      admin
+        .from("clipper_tax_info")
+        .select("clipper_id, submitted_at, cleared_at, requested_at")
+        .eq("tax_year", taxYear)
+        .order("clipper_id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   const taxState = new Map<string, TaxRowState>();

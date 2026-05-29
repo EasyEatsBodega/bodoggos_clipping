@@ -8,6 +8,29 @@ import {
   payoutBlocked,
 } from "./tax-compliance";
 
+// Supabase / Postgrest caps a single select at 1000 rows by default. Any
+// unbounded `from(...).select(...)` silently truncates past that, which is
+// catastrophic for accounting calcs that depend on seeing every row (e.g.
+// payout_clip_marks for the rolling-owed calc). Pages through the table in
+// 1000-row batches using a stable order.
+export async function fetchAllPages<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  batch = 1000,
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  // Hard ceiling to prevent runaway loops if the order key isn't stable.
+  for (let safety = 0; safety < 500; safety++) {
+    const { data, error } = await build(from, from + batch - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < batch) break;
+    from += batch;
+  }
+  return out;
+}
+
 export type TaxComplianceState = "needs_submission" | "awaiting_clearance" | "cleared";
 
 export type TaxComplianceRow = {
