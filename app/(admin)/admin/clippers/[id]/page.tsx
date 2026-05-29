@@ -10,6 +10,7 @@ import { PayoutForm } from "@/components/admin/PayoutForm";
 import { RejectClipButton } from "@/components/admin/RejectClipButton";
 import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
+import { DeletePayoutButton } from "@/components/admin/DeletePayoutButton";
 import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
@@ -415,6 +416,7 @@ export default async function AdminClipperDetailPage({
                 <TH>chain</TH>
                 <TH>tx</TH>
                 <TH>note</TH>
+                <TH />
               </THead>
               <TBody>
                 {(payouts ?? []).map((p) => (
@@ -426,12 +428,19 @@ export default async function AdminClipperDetailPage({
                       {p.tx_hash ?? "—"}
                     </TD>
                     <TD className="font-mono text-xs text-text-2">{p.note ?? "—"}</TD>
+                    <TD>
+                      <DeletePayoutButton
+                        payoutId={p.id}
+                        handle={clipper.x_handle}
+                        amount={p.amount}
+                      />
+                    </TD>
                   </TR>
                 ))}
                 {(!payouts || payouts.length === 0) && (
                   <TR>
                     <TD className="text-text-3 font-mono text-sm">no payouts yet</TD>
-                    <TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>
