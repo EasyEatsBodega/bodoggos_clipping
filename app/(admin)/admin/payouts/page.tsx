@@ -10,6 +10,7 @@ import { weekStartET, weekEndET, fmtWeekRange } from "@/lib/week";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { PayoutsPerDayChart } from "@/components/admin/OverviewCharts";
 import { DeletePayoutButton } from "@/components/admin/DeletePayoutButton";
+import { fetchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -32,21 +33,53 @@ export default async function AdminPayoutsPage() {
   const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86_400_000);
   const lastWeekEnd = thisWeekStart;
 
-  const [{ data: clippers }, { data: clips }, { data: payouts }, { data: payoutLog }] =
-    await Promise.all([
-      admin.from("clippers").select("id, x_handle, banned"),
+  // Postgrest caps unbounded selects at 1000 rows. Unpaged totals here
+  // would silently understate clips/payouts once the project scales, making
+  // program totals and weekly buckets wrong. Page every query that feeds a
+  // money number; the visible payouts-log table stays capped at 500 since
+  // it's just for display.
+  const [clippers, clips, payouts, payoutLog] = await Promise.all([
+    fetchAllPages<{ id: string; x_handle: string; banned: boolean }>((from, to) =>
+      admin
+        .from("clippers")
+        .select("id, x_handle, banned")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{
+      clipper_id: string;
+      status: "tracking" | "completed" | "rejected";
+      impressions: number | null;
+      payout_amount: string | null;
+      tracking_until: string | null;
+      cpm_rate_snapshot: string;
+      max_payout_snapshot: string;
+      flat_fee_snapshot: string | null;
+      min_views_snapshot: number | null;
+      botting_suspected: boolean | null;
+    }>((from, to) =>
       admin
         .from("clips")
         .select(
-          "clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
-        ),
-      admin.from("payouts").select("clipper_id, amount"),
+          "id, clipper_id, status, impressions, payout_amount, tracking_until, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
+        )
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ clipper_id: string; amount: string }>((from, to) =>
       admin
         .from("payouts")
-        .select("*, clipper:clippers(x_handle)")
-        .order("paid_at", { ascending: false })
-        .limit(500),
-    ]);
+        .select("clipper_id, amount")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    admin
+      .from("payouts")
+      .select("*, clipper:clippers(x_handle)")
+      .order("paid_at", { ascending: false })
+      .limit(500)
+      .then((r) => r.data ?? []),
+  ]);
 
   const handleOf = new Map<string, { handle: string; banned: boolean }>();
   for (const c of clippers ?? []) {
