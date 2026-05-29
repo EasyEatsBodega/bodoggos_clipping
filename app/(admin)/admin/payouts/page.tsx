@@ -9,6 +9,7 @@ import { bucketSum } from "@/lib/chart-data";
 import { weekStartET, weekEndET, fmtWeekRange } from "@/lib/week";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { PayoutsPerDayChart } from "@/components/admin/OverviewCharts";
+import { DeletePayoutButton } from "@/components/admin/DeletePayoutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -255,24 +256,35 @@ export default async function AdminPayoutsPage() {
                 <TH>chain</TH>
                 <TH>tx</TH>
                 <TH>note</TH>
+                <TH />
               </THead>
               <TBody>
-                {(payoutLog ?? []).map((p) => (
-                  <TR key={p.id}>
-                    <TD className="font-mono text-xs text-text-2">{fmtRelative(p.paid_at)}</TD>
-                    <TD className="font-mono">@{(p as any).clipper?.x_handle ?? "—"}</TD>
-                    <TD className="num">{fmtUsd(p.amount)}</TD>
-                    <TD className="font-mono">{p.chain}</TD>
-                    <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
-                      {p.tx_hash ?? "—"}
-                    </TD>
-                    <TD className="font-mono text-xs text-text-2">{p.note ?? "—"}</TD>
-                  </TR>
-                ))}
+                {(payoutLog ?? []).map((p) => {
+                  const handle = (p as any).clipper?.x_handle ?? "—";
+                  return (
+                    <TR key={p.id}>
+                      <TD className="font-mono text-xs text-text-2">{fmtRelative(p.paid_at)}</TD>
+                      <TD className="font-mono">@{handle}</TD>
+                      <TD className="num">{fmtUsd(p.amount)}</TD>
+                      <TD className="font-mono">{p.chain}</TD>
+                      <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
+                        {p.tx_hash ?? "—"}
+                      </TD>
+                      <TD className="font-mono text-xs text-text-2">{p.note ?? "—"}</TD>
+                      <TD>
+                        <DeletePayoutButton
+                          payoutId={p.id}
+                          handle={handle}
+                          amount={p.amount}
+                        />
+                      </TD>
+                    </TR>
+                  );
+                })}
                 {(!payoutLog || payoutLog.length === 0) && (
                   <TR>
                     <TD className="text-text-3 font-mono text-sm">no payouts yet</TD>
-                    <TD /><TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>
