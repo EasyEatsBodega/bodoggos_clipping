@@ -65,37 +65,47 @@ the environment and send it as `Authorization: Bearer <CLIPS_API_KEY>` (the
 header `x-api-key: <CLIPS_API_KEY>` is also accepted).
 
 ```bash
-# Filter by partner (slug or label, case-insensitive)
+# Filter by partner (slug or label, case-insensitive exact match)
 curl "https://flickclip.io/api/admin/clips?partner=acme" \
   -H "Authorization: Bearer $CLIPS_API_KEY"
 
-# Or pass the partner in a JSON body
+# Filter by creator (substring, case-insensitive — "Nick" matches "Nick",
+# "Easy, Nick", "Nick, Easy", etc.)
+curl "https://flickclip.io/api/admin/clips?creator=Nick" \
+  -H "Authorization: Bearer $CLIPS_API_KEY"
+
+# Combine — partner AND creator
+curl "https://flickclip.io/api/admin/clips?partner=acme&creator=Nick" \
+  -H "Authorization: Bearer $CLIPS_API_KEY"
+
+# Or pass filters in a JSON body
 curl "https://flickclip.io/api/admin/clips" \
   -H "Authorization: Bearer $CLIPS_API_KEY" \
   -H "content-type: application/json" \
-  -d '{"partner":"acme"}'
+  -d '{"partner":"acme","creator":"Nick"}'
 ```
 
-Omit `partner` to return all clips. Rejected clips are always excluded.
+Omit both `partner` and `creator` to return all clips. Rejected clips are always excluded.
 Response:
 
 ```json
 {
   "partner": "Acme",
+  "creator": "Nick",
   "count": 2,
   "clips": [
     {
       "handle": "someclipper",
       "submission_date": "2026-05-20T18:03:11.000Z",
       "tweet_link": "https://x.com/someclipper/status/123",
-      "creator": "Jane Doe",
+      "creator": "Nick",
       "partner": "Acme"
     }
   ]
 }
 ```
 
-An unknown partner returns `404` with the list of `available_partners`.
+`partner` and `creator` in the envelope echo back what was queried (`null` if omitted). An unknown `partner` returns `404` with the list of `available_partners`; a `creator` substring that matches no creator tag returns `404` with `available_creators`.
 
 ## Deploying
 

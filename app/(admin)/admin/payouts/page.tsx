@@ -202,7 +202,15 @@ export default async function AdminPayoutsPage() {
       <AdminNav />
       <main className="flex-1 max-w-[1400px] mx-auto px-6 py-10 w-full flex flex-col gap-8">
         <section className="flex flex-col gap-3">
-          <h2 className="label">program totals</h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="label">program totals</h2>
+            <Link
+              href={"/admin/payouts/review" as never}
+              className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
+            >
+              sanity review →
+            </Link>
+          </div>
           <StatGrid>
             <StatCell label="spend (earned)" value={usd(totalEarnedCents)} accent="admin" />
             <StatCell label="paid" value={usd(totalPaidCents)} />
