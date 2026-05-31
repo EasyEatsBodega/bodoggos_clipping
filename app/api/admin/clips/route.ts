@@ -6,8 +6,13 @@ export const dynamic = "force-dynamic";
 // Programmatic, machine-to-machine read API for the deliverable-tracking app.
 // Auth is a static bearer secret (CLIPS_API_KEY) rather than an admin cookie
 // session, since this is called server-to-server from another service.
-// Accepts a `partner` filter (slug or label, case-insensitive) via query
-// string (GET) or JSON body (GET/POST). Returns one row per clip with the
+//
+// Filters (all optional; combined with AND):
+//   - partner: slug or label of a partner tag, case-insensitive exact match.
+//   - creator: substring matched against creator tag labels/slugs, case-insensitive.
+//
+// Either, both, or neither may be provided. Pass via query string (GET) or
+// JSON body (GET/POST). Returns one row per non-rejected clip with the
 // fields the tracker needs: handle, submission date, tweet link, creator,
 // partner.
 
@@ -32,11 +37,11 @@ async function handle(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const partnerFilter = await readPartner(req);
+  const { partner: partnerFilter, creator: creatorFilter } = await readFilters(req);
   const admin = createSupabaseAdminClient();
 
   // Load every creator/partner tag up front so we can both resolve the
-  // requested partner and label the assignments on each clip.
+  // requested filters and label the assignments on each clip.
   const { data: tagsRaw, error: tagsErr } = await admin
     .from("clip_tags")
     .select("id, slug, label, kind")
@@ -47,6 +52,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const tags = tagsRaw ?? [];
   const tagById = new Map(tags.map((t) => [t.id, t]));
 
+  // Resolve partner (exact, case-insensitive, slug or label).
   let resolvedPartner: { id: string; label: string } | null = null;
   if (partnerFilter) {
     const needle = partnerFilter.trim().toLowerCase();
@@ -70,24 +76,70 @@ async function handle(req: Request): Promise<NextResponse> {
     resolvedPartner = { id: match.id, label: match.label };
   }
 
-  // When filtering by partner, restrict to the clips carrying that tag.
-  let clipIdFilter: string[] | null = null;
+  // Resolve creator (substring, case-insensitive, label or slug). Any
+  // creator tag whose label/slug contains the query contributes.
+  let creatorMatches: { id: string; label: string }[] = [];
+  if (creatorFilter) {
+    const needle = creatorFilter.trim().toLowerCase();
+    creatorMatches = tags
+      .filter(
+        (t) =>
+          t.kind === "creator" &&
+          (t.label.toLowerCase().includes(needle) ||
+            t.slug.toLowerCase().includes(needle)),
+      )
+      .map((t) => ({ id: t.id, label: t.label }));
+    if (creatorMatches.length === 0) {
+      return NextResponse.json(
+        {
+          error: "no creators match",
+          creator: creatorFilter,
+          available_creators: tags
+            .filter((t) => t.kind === "creator")
+            .map((t) => ({ slug: t.slug, label: t.label })),
+        },
+        { status: 404 },
+      );
+    }
+  }
+
+  // Build the clip-id filter from each active dimension, then intersect.
+  let partnerClipIds: Set<string> | null = null;
   if (resolvedPartner) {
-    const { data: assigned, error } = await admin
+    const { data, error } = await admin
       .from("clip_tag_assignments")
       .select("clip_id")
       .eq("tag_id", resolvedPartner.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    clipIdFilter = (assigned ?? []).map((a) => a.clip_id);
-    if (clipIdFilter.length === 0) {
-      return NextResponse.json({
-        partner: resolvedPartner.label,
-        count: 0,
-        clips: [],
-      });
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    partnerClipIds = new Set((data ?? []).map((a) => a.clip_id));
+  }
+
+  let creatorClipIds: Set<string> | null = null;
+  if (creatorMatches.length > 0) {
+    const { data, error } = await admin
+      .from("clip_tag_assignments")
+      .select("clip_id")
+      .in("tag_id", creatorMatches.map((t) => t.id));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    creatorClipIds = new Set((data ?? []).map((a) => a.clip_id));
+  }
+
+  let clipIdFilter: string[] | null = null;
+  if (partnerClipIds && creatorClipIds) {
+    clipIdFilter = [...partnerClipIds].filter((id) => creatorClipIds!.has(id));
+  } else if (partnerClipIds) {
+    clipIdFilter = [...partnerClipIds];
+  } else if (creatorClipIds) {
+    clipIdFilter = [...creatorClipIds];
+  }
+
+  if (clipIdFilter && clipIdFilter.length === 0) {
+    return NextResponse.json({
+      partner: resolvedPartner?.label ?? null,
+      creator: creatorFilter ?? null,
+      count: 0,
+      clips: [],
+    });
   }
 
   let clipQuery = admin
@@ -138,26 +190,34 @@ async function handle(req: Request): Promise<NextResponse> {
 
   return NextResponse.json({
     partner: resolvedPartner?.label ?? null,
+    creator: creatorFilter ?? null,
     count: rows.length,
     clips: rows,
   });
 }
 
-async function readPartner(req: Request): Promise<string | null> {
+async function readFilters(
+  req: Request,
+): Promise<{ partner: string | null; creator: string | null }> {
   const url = new URL(req.url);
-  const fromQuery = url.searchParams.get("partner");
-  if (fromQuery && fromQuery.trim()) return fromQuery;
+  let partner = url.searchParams.get("partner");
+  let creator = url.searchParams.get("creator");
 
   const ct = req.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) {
     const body = (await req.json().catch(() => null)) as
-      | { partner?: unknown }
+      | { partner?: unknown; creator?: unknown }
       | null;
-    if (body && typeof body.partner === "string" && body.partner.trim()) {
-      return body.partner;
+    if (body) {
+      if (!partner && typeof body.partner === "string") partner = body.partner;
+      if (!creator && typeof body.creator === "string") creator = body.creator;
     }
   }
-  return null;
+
+  return {
+    partner: partner && partner.trim() ? partner : null,
+    creator: creator && creator.trim() ? creator : null,
+  };
 }
 
 function authorize(req: Request): boolean {
