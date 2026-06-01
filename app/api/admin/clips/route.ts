@@ -22,6 +22,7 @@ type ClipRow = {
   tweet_link: string;
   creator: string | null;
   partner: string | null;
+  impressions: number;
 };
 
 export async function GET(req: Request) {
@@ -144,7 +145,9 @@ async function handle(req: Request): Promise<NextResponse> {
 
   let clipQuery = admin
     .from("clips")
-    .select("id, url, submitted_at, clipper:clippers(x_handle)")
+    .select(
+      "id, url, submitted_at, impressions, final_impressions, clipper:clippers(x_handle)",
+    )
     .neq("status", "rejected")
     .order("submitted_at", { ascending: false });
   if (clipIdFilter) clipQuery = clipQuery.in("id", clipIdFilter);
@@ -176,15 +179,26 @@ async function handle(req: Request): Promise<NextResponse> {
   }
 
   const rows: ClipRow[] = (clips ?? []).map((c) => {
-    const clipper = (c as { clipper?: { x_handle?: string } | null }).clipper;
+    const row = c as {
+      id: string;
+      url: string;
+      submitted_at: string;
+      impressions: number | null;
+      final_impressions: number | null;
+      clipper?: { x_handle?: string } | null;
+    };
     const creators = creatorByClip.get(c.id) ?? [];
     const partners = partnerByClip.get(c.id) ?? [];
+    // final_impressions is the locked-in count for completed clips;
+    // impressions is the latest poll while tracking. Match the admin UI.
+    const views = Number(row.final_impressions ?? row.impressions ?? 0);
     return {
-      handle: clipper?.x_handle ?? null,
-      submission_date: c.submitted_at,
-      tweet_link: c.url,
+      handle: row.clipper?.x_handle ?? null,
+      submission_date: row.submitted_at,
+      tweet_link: row.url,
       creator: creators.length ? creators.join(", ") : null,
       partner: partners.length ? partners.join(", ") : null,
+      impressions: views,
     };
   });
 
