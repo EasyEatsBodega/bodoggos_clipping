@@ -99,11 +99,14 @@ Response:
       "submission_date": "2026-05-20T18:03:11.000Z",
       "tweet_link": "https://x.com/someclipper/status/123",
       "creator": "Nick",
-      "partner": "Acme"
+      "partner": "Acme",
+      "impressions": 958
     }
   ]
 }
 ```
+
+`impressions` is the locked-in `final_impressions` for completed clips, or the latest polled `impressions` while tracking — matches the count shown in `/admin/clips`.
 
 `partner` and `creator` in the envelope echo back what was queried (`null` if omitted). An unknown `partner` returns `404` with the list of `available_partners`; a `creator` substring that matches no creator tag returns `404` with `available_creators`.
 
