@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { fetchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -105,24 +106,42 @@ async function handle(req: Request): Promise<NextResponse> {
   }
 
   // Build the clip-id filter from each active dimension, then intersect.
+  // Every clip_tag_assignments select must page — a popular partner alone
+  // can have thousands of assignments and a naive query truncates at the
+  // Postgrest row cap, silently hiding clips from the result.
   let partnerClipIds: Set<string> | null = null;
   if (resolvedPartner) {
-    const { data, error } = await admin
-      .from("clip_tag_assignments")
-      .select("clip_id")
-      .eq("tag_id", resolvedPartner.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    partnerClipIds = new Set((data ?? []).map((a) => a.clip_id));
+    try {
+      const rows = await fetchAllPages<{ clip_id: string }>((from, to) =>
+        admin
+          .from("clip_tag_assignments")
+          .select("clip_id")
+          .eq("tag_id", resolvedPartner!.id)
+          .order("clip_id", { ascending: true })
+          .range(from, to),
+      );
+      partnerClipIds = new Set(rows.map((a) => a.clip_id));
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
+    }
   }
 
   let creatorClipIds: Set<string> | null = null;
   if (creatorMatches.length > 0) {
-    const { data, error } = await admin
-      .from("clip_tag_assignments")
-      .select("clip_id")
-      .in("tag_id", creatorMatches.map((t) => t.id));
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    creatorClipIds = new Set((data ?? []).map((a) => a.clip_id));
+    try {
+      const tagIds = creatorMatches.map((t) => t.id);
+      const rows = await fetchAllPages<{ clip_id: string }>((from, to) =>
+        admin
+          .from("clip_tag_assignments")
+          .select("clip_id")
+          .in("tag_id", tagIds)
+          .order("clip_id", { ascending: true })
+          .range(from, to),
+      );
+      creatorClipIds = new Set(rows.map((a) => a.clip_id));
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
+    }
   }
 
   let clipIdFilter: string[] | null = null;
@@ -143,32 +162,60 @@ async function handle(req: Request): Promise<NextResponse> {
     });
   }
 
-  let clipQuery = admin
-    .from("clips")
-    .select(
-      "id, url, submitted_at, impressions, final_impressions, clipper:clippers(x_handle)",
-    )
-    .neq("status", "rejected")
-    .order("submitted_at", { ascending: false });
-  if (clipIdFilter) clipQuery = clipQuery.in("id", clipIdFilter);
-
-  const { data: clips, error: clipsErr } = await clipQuery.limit(2000);
-  if (clipsErr) {
-    return NextResponse.json({ error: clipsErr.message }, { status: 500 });
+  // Page the main clips query so projects with >1000 clips aren't silently
+  // truncated. Stable order on submitted_at + id keeps pagination consistent.
+  type ClipRecord = {
+    id: string;
+    url: string;
+    submitted_at: string;
+    impressions: number | null;
+    final_impressions: number | null;
+    clipper?: { x_handle?: string } | { x_handle?: string }[] | null;
+  };
+  let clips: ClipRecord[] = [];
+  try {
+    clips = await fetchAllPages<ClipRecord>((from, to) => {
+      let q = admin
+        .from("clips")
+        .select(
+          "id, url, submitted_at, impressions, final_impressions, clipper:clippers(x_handle)",
+        )
+        .neq("status", "rejected")
+        .order("submitted_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (clipIdFilter) q = q.in("id", clipIdFilter);
+      // Postgrest types the foreign-table select as an array; the runtime
+      // value for a single-row relation is the object directly. Cast to
+      // satisfy the helper signature.
+      return q as unknown as PromiseLike<{
+        data: ClipRecord[] | null;
+        error: unknown;
+      }>;
+    });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 
-  const clipIds = (clips ?? []).map((c) => c.id);
+  const clipIds = clips.map((c) => c.id);
   const creatorByClip = new Map<string, string[]>();
   const partnerByClip = new Map<string, string[]>();
   if (clipIds.length) {
-    const { data: assignments, error } = await admin
-      .from("clip_tag_assignments")
-      .select("clip_id, tag_id")
-      .in("clip_id", clipIds);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    let assignments: Array<{ clip_id: string; tag_id: string }> = [];
+    try {
+      assignments = await fetchAllPages<{ clip_id: string; tag_id: string }>(
+        (from, to) =>
+          admin
+            .from("clip_tag_assignments")
+            .select("clip_id, tag_id")
+            .in("clip_id", clipIds)
+            .order("clip_id", { ascending: true })
+            .range(from, to),
+      );
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
     }
-    for (const a of assignments ?? []) {
+    for (const a of assignments) {
       const tag = tagById.get(a.tag_id);
       if (!tag) continue;
       const target = tag.kind === "creator" ? creatorByClip : partnerByClip;
@@ -178,24 +225,17 @@ async function handle(req: Request): Promise<NextResponse> {
     }
   }
 
-  const rows: ClipRow[] = (clips ?? []).map((c) => {
-    const row = c as {
-      id: string;
-      url: string;
-      submitted_at: string;
-      impressions: number | null;
-      final_impressions: number | null;
-      clipper?: { x_handle?: string } | null;
-    };
+  const rows: ClipRow[] = clips.map((c) => {
     const creators = creatorByClip.get(c.id) ?? [];
     const partners = partnerByClip.get(c.id) ?? [];
     // final_impressions is the locked-in count for completed clips;
     // impressions is the latest poll while tracking. Match the admin UI.
-    const views = Number(row.final_impressions ?? row.impressions ?? 0);
+    const views = Number(c.final_impressions ?? c.impressions ?? 0);
+    const clipper = Array.isArray(c.clipper) ? c.clipper[0] : c.clipper;
     return {
-      handle: row.clipper?.x_handle ?? null,
-      submission_date: row.submitted_at,
-      tweet_link: row.url,
+      handle: clipper?.x_handle ?? null,
+      submission_date: c.submitted_at,
+      tweet_link: c.url,
       creator: creators.length ? creators.join(", ") : null,
       partner: partners.length ? partners.join(", ") : null,
       impressions: views,
