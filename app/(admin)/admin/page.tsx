@@ -12,6 +12,7 @@ import {
   cumulativeImpressions,
   type Granularity,
 } from "@/lib/chart-data";
+import { fetchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -81,64 +82,95 @@ export default async function AdminOverviewPage({
 
   // Resolve the set of clip_ids that satisfy the (optional) tag filter.
   // If both creator and topic are set, require *both* (AND semantics).
+  // Paged: a single popular tag can easily have >1000 assignments, and a
+  // truncated lookup would silently hide most matching clips.
   let allowedClipIds: Set<string> | null = null;
   if (filterTagIds.length > 0) {
-    const { data: assigns } = await admin
-      .from("clip_tag_assignments")
-      .select("clip_id, tag_id")
-      .in("tag_id", filterTagIds);
+    const assigns = await fetchAllPages<{ clip_id: string; tag_id: string }>(
+      (from, to) =>
+        admin
+          .from("clip_tag_assignments")
+          .select("clip_id, tag_id")
+          .in("tag_id", filterTagIds)
+          .order("clip_id", { ascending: true })
+          .range(from, to),
+    );
     const countByClip = new Map<string, number>();
-    for (const a of assigns ?? []) {
+    for (const a of assigns) {
       countByClip.set(a.clip_id, (countByClip.get(a.clip_id) ?? 0) + 1);
     }
     allowedClipIds = new Set();
     for (const [clipId, count] of countByClip) {
       if (count >= filterTagIds.length) allowedClipIds.add(clipId);
     }
-    if (allowedClipIds.size === 0) {
-      // Sentinel so subsequent .in() queries return nothing rather than
-      // matching all rows.
-      allowedClipIds.add("00000000-0000-0000-0000-000000000000");
-    }
   }
 
-  // Pull data within the window. We pull everything for the window (no
-  // server-side aggregation yet — table sizes are small).
-  let clipsQ = admin
-    .from("clips")
-    .select(
-      "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
-    );
-  if (statusFilter) clipsQ = clipsQ.eq("status", statusFilter);
-  if (allowedClipIds) clipsQ = clipsQ.in("id", Array.from(allowedClipIds));
-  // A campaign slug that doesn't resolve filters to nothing rather than all.
-  if (campaignSlug) {
-    clipsQ = clipsQ.eq(
-      "campaign_id",
-      campaign?.id ?? "00000000-0000-0000-0000-000000000000",
-    );
-  }
-  // The range scopes the clip set too (not just the charts), so the KPIs and
-  // leaderboards reflect the selected window. "all" applies no date floor.
-  if (range !== "all") {
-    clipsQ = clipsQ.gte("submitted_at", start.toISOString());
-  }
-
-  // Snapshots are bounded to the selected window AND paged through in full:
-  // PostgREST caps each response at 1000 rows, so a single query would return
-  // only the oldest 1000 in-window snapshots and flatten the curve. Paging
-  // gathers every in-window snapshot so cumulativeImpressions sees the real
-  // growth. Bounded by window so we never scan the whole (unbounded) table.
-  const [{ data: clips }, { data: clippers }, snapshots] = await Promise.all([
-    clipsQ,
-    admin.from("clippers").select("id, x_handle, banned, joined_at"),
+  // Pull data within the window. Each of these queries used to be
+  // single-shot (capped at 1000 by Postgrest); now paged so the overview
+  // reflects every row. We deliberately don't pass `.in("id", allowedClipIds)`
+  // to the clips query — a few thousand UUIDs in the URL exceeds Postgrest's
+  // query length and the request silently fails. Instead we fetch all
+  // in-window clips and filter by allowedClipIds in memory.
+  type ClipRecord = {
+    id: string;
+    clipper_id: string;
+    url: string;
+    impressions: number | null;
+    final_impressions: number | null;
+    payout_amount: string | null;
+    status: "tracking" | "completed" | "rejected";
+    submitted_at: string;
+    cpm_rate_snapshot: string;
+    max_payout_snapshot: string;
+    flat_fee_snapshot: string | null;
+    min_views_snapshot: number | null;
+    botting_suspected: boolean | null;
+    campaign_id: string | null;
+  };
+  const [clipsRaw, clippersList, snapshots] = await Promise.all([
+    fetchAllPages<ClipRecord>((from, to) => {
+      let q = admin
+        .from("clips")
+        .select(
+          "id, clipper_id, url, impressions, final_impressions, payout_amount, status, submitted_at, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected, campaign_id",
+        )
+        .order("submitted_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (statusFilter) q = q.eq("status", statusFilter);
+      if (campaignSlug) {
+        q = q.eq(
+          "campaign_id",
+          campaign?.id ?? "00000000-0000-0000-0000-000000000000",
+        );
+      }
+      if (range !== "all") {
+        q = q.gte("submitted_at", start.toISOString());
+      }
+      return q;
+    }),
+    fetchAllPages<{ id: string; x_handle: string; banned: boolean; joined_at: string }>(
+      (from, to) =>
+        admin
+          .from("clippers")
+          .select("id, x_handle, banned, joined_at")
+          .order("id", { ascending: true })
+          .range(from, to),
+    ),
     fetchWindowSnapshots(admin, start.toISOString()),
   ]);
 
-  // For impressions-over-time we have to restrict snapshots to clips
-  // that match the current filter, otherwise the chart double-counts
-  // impressions from clips that don't belong to the filter.
-  const filteredClipIds = new Set((clips ?? []).map((c) => c.id));
+  // Apply tag filter in memory — see comment above for why we can't do this
+  // in the SQL `in()`.
+  const clips: ClipRecord[] = allowedClipIds
+    ? clipsRaw.filter((c) => allowedClipIds!.has(c.id))
+    : clipsRaw;
+  const clippers = clippersList;
+
+  // For impressions-over-time we restrict snapshots to clips that match the
+  // current filter, otherwise the chart double-counts impressions from clips
+  // that don't belong to the filter.
+  const filteredClipIds = new Set(clips.map((c) => c.id));
   const filteredSnapshots = (snapshots ?? []).filter((s) =>
     filteredClipIds.has(s.clip_id),
   );
@@ -437,12 +469,18 @@ type SnapshotRow = { clip_id: string; impressions: number; captured_at: string }
 
 // Pages through every in-window snapshot. PostgREST caps each response at
 // 1000 rows, so we walk .range() windows until a short page signals the end.
-// A hard ceiling guards against pathological table sizes.
+// Previously capped at 200k for safety, but that quietly cut off the most
+// recent snapshots once the project grew (we page ascending by captured_at,
+// so the oldest snapshots filled the cap first and the chart flat-lined for
+// recent days). Ceiling raised to 5M — well above realistic in-window snapshot
+// counts and high enough that hitting it means there's a real scale problem
+// to solve, not silently bad charts.
 async function fetchWindowSnapshots(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   startIso: string,
 ): Promise<SnapshotRow[]> {
   const pageSize = 1000;
+  const safetyCeiling = 5_000_000;
   const out: SnapshotRow[] = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await admin
@@ -453,7 +491,7 @@ async function fetchWindowSnapshots(
       .range(from, from + pageSize - 1);
     if (error || !data || data.length === 0) break;
     out.push(...(data as SnapshotRow[]));
-    if (data.length < pageSize || out.length >= 200_000) break;
+    if (data.length < pageSize || out.length >= safetyCeiling) break;
   }
   return out;
 }
