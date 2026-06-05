@@ -23,7 +23,9 @@ async function handle(req: Request) {
 
   const { data: clips, error } = await admin
     .from("clips")
-    .select("id, tweet_id, submitted_at, last_polled_at, poll_count, x_author_id")
+    .select(
+      "id, tweet_id, submitted_at, last_polled_at, poll_count, x_author_id, missing_poll_count",
+    )
     .eq("status", "tracking")
     .gt("tracking_until", new Date().toISOString())
     .order("submitted_at", { ascending: true })
@@ -35,6 +37,15 @@ async function handle(req: Request) {
   let skipped = 0;
   let failed = 0;
   let rejected = 0;
+  let suspected = 0;
+
+  // Number of consecutive "tweet missing" responses required before we
+  // reject a clip. The provider returns missing on real deletions but also
+  // on transient API blips (empty data on 200 OK, rate-limit edge cases,
+  // briefly-protected accounts). At hourly polling, 3 = ~3 hours of
+  // sustained missing — long enough to filter blips, short enough that
+  // genuine deletions still close out within the tracking window.
+  const MISSING_THRESHOLD = 3;
 
   for (const clip of clips ?? []) {
     const due = shouldPoll({
@@ -51,16 +62,32 @@ async function handle(req: Request) {
       const lookup = await provider.getTweet(clip.tweet_id);
 
       if (lookup.deleted) {
-        await admin
-          .from("clips")
-          .update({
-            status: "rejected",
-            rejected_reason: "tweet_deleted",
-            last_polled_at: now.toISOString(),
-            poll_count: clip.poll_count + 1,
-          })
-          .eq("id", clip.id);
-        rejected++;
+        const nextMissing = (clip.missing_poll_count ?? 0) + 1;
+        if (nextMissing >= MISSING_THRESHOLD) {
+          await admin
+            .from("clips")
+            .update({
+              status: "rejected",
+              rejected_reason: "tweet_deleted",
+              last_polled_at: now.toISOString(),
+              poll_count: clip.poll_count + 1,
+              missing_poll_count: nextMissing,
+            })
+            .eq("id", clip.id);
+          rejected++;
+        } else {
+          // Keep tracking; this might be a transient API issue. The next
+          // successful poll will reset the counter.
+          await admin
+            .from("clips")
+            .update({
+              last_polled_at: now.toISOString(),
+              poll_count: clip.poll_count + 1,
+              missing_poll_count: nextMissing,
+            })
+            .eq("id", clip.id);
+          suspected++;
+        }
         continue;
       }
 
@@ -71,6 +98,7 @@ async function handle(req: Request) {
           impressions,
           last_polled_at: now.toISOString(),
           poll_count: clip.poll_count + 1,
+          missing_poll_count: 0,
         })
         .eq("id", clip.id);
       await admin.from("clip_impression_snapshots").insert({
@@ -85,7 +113,14 @@ async function handle(req: Request) {
     }
   }
 
-  return NextResponse.json({ polled, skipped, failed, rejected, total: clips?.length ?? 0 });
+  return NextResponse.json({
+    polled,
+    skipped,
+    failed,
+    rejected,
+    suspected,
+    total: clips?.length ?? 0,
+  });
 }
 
 function authorize(req: Request): boolean {

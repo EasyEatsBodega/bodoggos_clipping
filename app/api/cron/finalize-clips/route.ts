@@ -25,7 +25,7 @@ async function handle(req: Request) {
   const { data: clips, error } = await admin
     .from("clips")
     .select(
-      "id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected",
+      "id, tweet_id, impressions, poll_count, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, botting_suspected, missing_poll_count",
     )
     .eq("status", "tracking")
     .lte("tracking_until", now.toISOString())
@@ -35,26 +35,39 @@ async function handle(req: Request) {
   let finalized = 0;
   let rejected = 0;
 
+  // Mirror poll-clips: require sustained missing signals before rejecting,
+  // so a transient blip at finalize time doesn't unfairly cost a clipper
+  // their earned payout.
+  const MISSING_THRESHOLD = 3;
+
   for (const clip of clips ?? []) {
     let impressions = clip.impressions;
+    let missingCount = clip.missing_poll_count ?? 0;
 
     try {
       const lookup = await provider.getTweet(clip.tweet_id);
       if (lookup.deleted) {
-        await admin
-          .from("clips")
-          .update({
-            status: "rejected",
-            rejected_reason: "tweet_deleted",
-            last_polled_at: now.toISOString(),
-            poll_count: clip.poll_count + 1,
-          })
-          .eq("id", clip.id);
-        rejected++;
-        continue;
-      }
-      if (lookup.impressionCount != null) {
+        const nextMissing = missingCount + 1;
+        if (nextMissing >= MISSING_THRESHOLD) {
+          await admin
+            .from("clips")
+            .update({
+              status: "rejected",
+              rejected_reason: "tweet_deleted",
+              last_polled_at: now.toISOString(),
+              poll_count: clip.poll_count + 1,
+              missing_poll_count: nextMissing,
+            })
+            .eq("id", clip.id);
+          rejected++;
+          continue;
+        }
+        // Not enough confirmations — finalize with last known impressions
+        // so the clipper still gets paid for confirmed views.
+        missingCount = nextMissing;
+      } else if (lookup.impressionCount != null) {
         impressions = lookup.impressionCount;
+        missingCount = 0;
         await admin.from("clip_impression_snapshots").insert({
           clip_id: clip.id,
           impressions,
@@ -84,6 +97,7 @@ async function handle(req: Request) {
         payout_amount: payoutAmount,
         last_polled_at: now.toISOString(),
         poll_count: clip.poll_count + 1,
+        missing_poll_count: missingCount,
       })
       .eq("id", clip.id);
     finalized++;

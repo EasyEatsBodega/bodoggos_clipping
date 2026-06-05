@@ -40,6 +40,7 @@ export type Clip = {
   botting_reason: string | null;
   botting_marked_at: string | null;
   botting_marked_by: string | null;
+  missing_poll_count: number;
 };
 
 export type ClipSnapshot = {
