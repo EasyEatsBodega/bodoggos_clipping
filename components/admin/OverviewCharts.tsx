@@ -41,7 +41,7 @@ export function OverviewCharts({
               </linearGradient>
             </defs>
             {commonAxes(impressions)}
-            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={tooltipLabelFmt} formatter={(v) => fmtInt(Number(v))} />
             <Area
               type="monotone"
               dataKey="value"
@@ -57,7 +57,7 @@ export function OverviewCharts({
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={clipsSubmitted} margin={chartMargin}>
             {commonAxes(clipsSubmitted)}
-            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={tooltipLabelFmt} formatter={(v) => fmtInt(Number(v))} />
             <Bar dataKey="value" fill="var(--admin)" />
           </BarChart>
         </ResponsiveContainer>
@@ -67,7 +67,7 @@ export function OverviewCharts({
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={newClippersPerDay} margin={chartMargin}>
             {commonAxes(newClippersPerDay)}
-            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={tooltipLabelFmt} formatter={(v) => fmtInt(Number(v))} />
             <Line
               type="monotone"
               dataKey="value"
@@ -83,7 +83,7 @@ export function OverviewCharts({
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={avgPerClip} margin={chartMargin}>
             {commonAxes(avgPerClip)}
-            <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => fmtInt(Number(v))} />
+            <Tooltip {...tooltipProps} labelFormatter={tooltipLabelFmt} formatter={(v) => fmtInt(Number(v))} />
             <Line
               type="monotone"
               dataKey="value"
@@ -106,7 +106,7 @@ export function PayoutsPerDayChart({ data }: { data: DailyPoint[] }) {
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={chartMargin}>
           {commonAxes(data)}
-          <Tooltip {...tooltipProps} labelFormatter={fmtTick} formatter={(v) => `$${Number(v).toFixed(2)}`} />
+          <Tooltip {...tooltipProps} labelFormatter={tooltipLabelFmt} formatter={(v) => `$${Number(v).toFixed(2)}`} />
           <Bar dataKey="value" fill="var(--accent)" />
         </BarChart>
       </ResponsiveContainer>
@@ -155,26 +155,53 @@ function commonAxes(data: DailyPoint[]) {
   );
 }
 
-// Bucket keys are either "YYYY-MM-DD" (day) or an ISO timestamp (hour).
-// Recharts may hand the formatter the raw string key OR — when it treats the
-// hourly ISO keys as a time axis — a numeric epoch. Normalize both, and never
-// assume the argument is a string (a non-string here is what crashed 24H/7D).
-function fmtTick(value: unknown): string {
-  if (typeof value === "number") {
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+// Parse a bucket key ("YYYY-MM-DD" for day, ISO timestamp for hour) into a
+// Date. Returns null if the input isn't a recognizable key — used to detect
+// when Recharts hands us a numeric label (epoch 0 → "Jan 1 00:00") and we
+// should fall back to reading from the data point instead of formatting garbage.
+function parseBucketKey(value: unknown): { date: Date; hasHour: boolean } | null {
+  if (typeof value !== "string") return null;
+  if (value.includes("T")) {
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    const h = String(d.getUTCHours()).padStart(2, "0");
-    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h}h`;
+    if (Number.isNaN(d.getTime())) return null;
+    return { date: d, hasHour: true };
   }
-  const key = String(value ?? "");
-  if (key.includes("T")) {
-    const d = new Date(key);
-    if (Number.isNaN(d.getTime())) return key;
-    const h = String(d.getUTCHours()).padStart(2, "0");
-    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h}h`;
-  }
-  const parts = key.split("-");
-  return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : key;
+  // Strict "YYYY-MM-DD" — anything else (numeric, "null", etc.) is rejected.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return { date: d, hasHour: false };
+}
+
+// Compact axis-tick format: "May 25" for day buckets, "May 25 14:00" for hour
+// buckets. Keeps the x-axis legible at 6+ ticks.
+function fmtTick(value: unknown): string {
+  const parsed = parseBucketKey(value);
+  if (!parsed) return typeof value === "string" ? value : "";
+  const { date, hasHour } = parsed;
+  const m = MONTHS[date.getUTCMonth()];
+  const d = date.getUTCDate();
+  if (!hasHour) return `${m} ${d}`;
+  const h = String(date.getUTCHours()).padStart(2, "0");
+  return `${m} ${d} ${h}:00`;
+}
+
+// Recharts' Tooltip `labelFormatter` sometimes receives a numeric index
+// instead of the dataKey value (especially on bar charts with category axes),
+// which would format as epoch zero → "Jan 1 00:00". Read the bucket key off
+// the actual data point via the payload, falling back to the label only when
+// the payload isn't usable.
+function tooltipLabelFmt(
+  label: unknown,
+  payload?: ReadonlyArray<{ payload?: { date?: string } }>,
+): string {
+  const pointKey = payload?.[0]?.payload?.date;
+  return fmtTick(pointKey ?? label);
 }
 
 function abbrev(n: number): string {
