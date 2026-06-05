@@ -57,6 +57,18 @@ export default async function BotReviewPage() {
     ),
   ]);
 
+  // Open clip flags so we can mark which review rows are already in the
+  // inbox awaiting a decision (typically auto-filed by the bot-flag cron).
+  const openFlags = await fetchAllPages<{ clip_id: string }>((from, to) =>
+    admin
+      .from("clip_flags")
+      .select("clip_id")
+      .is("resolved_at", null)
+      .order("clip_id", { ascending: true })
+      .range(from, to),
+  );
+  const flaggedClipIds = new Set(openFlags.map((f) => f.clip_id));
+
   const handleOf = new Map(clippers.map((c) => [c.id, c.x_handle]));
 
   // Group snapshots by clip once, then score each clip.
@@ -103,6 +115,12 @@ export default async function BotReviewPage() {
             excluding already-rejected and already-marked-botting clips.
             Click <span className="text-admin">mark botting</span> to
             confirm; the detected reason is pre-filled.
+          </p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-text-3 max-w-3xl">
+            A daily cron auto-files a clip flag for any clip scoring{" "}
+            <span className="text-admin">≥ 60</span>. Flagged rows show ⚑ below
+            and appear in <Link href="/admin/flags" className="hover:underline">/admin/flags</Link>.
+            Marking a clip as botting auto-resolves its flag.
           </p>
         </section>
 
@@ -187,6 +205,7 @@ export default async function BotReviewPage() {
             <div className="border border-border">
               <Table>
                 <THead>
+                  <TH>flag</TH>
                   <TH>handle</TH>
                   <TH>tweet</TH>
                   <TH>impressions</TH>
@@ -204,8 +223,26 @@ export default async function BotReviewPage() {
                     const impr = Number(
                       clip.final_impressions ?? clip.impressions ?? 0,
                     );
+                    const isFlagged = flaggedClipIds.has(clip.id);
                     return (
                       <TR key={clip.id}>
+                        <TD className="font-mono text-[10px] uppercase tracking-widest">
+                          {isFlagged ? (
+                            <span
+                              className="text-admin"
+                              title="open flag in /admin/flags awaiting review"
+                            >
+                              ⚑ flagged
+                            </span>
+                          ) : (
+                            <span
+                              className="text-text-3"
+                              title="no open flag — auto-flagged daily above score 60"
+                            >
+                              —
+                            </span>
+                          )}
+                        </TD>
                         <TD className="font-mono">
                           <Link
                             href={`/admin/clippers/${clip.clipper_id}` as never}

@@ -39,6 +39,20 @@ export async function POST(
 
   const { error } = await auth.admin.from("clips").update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Confirming botting closes out any open flags on this clip — typically
+  // the auto-generated ones from the bot-flag cron — so the /admin/flags
+  // inbox doesn't keep showing them after the call has been made.
+  await auth.admin
+    .from("clip_flags")
+    .update({
+      resolved_at: new Date().toISOString(),
+      resolved_by: auth.user.id,
+      resolution: "marked as botting",
+    })
+    .eq("clip_id", id)
+    .is("resolved_at", null);
+
   return NextResponse.json({ ok: true });
 }
 
