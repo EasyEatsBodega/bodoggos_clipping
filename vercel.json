@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/poll-clips", "schedule": "0 * * * *" },
-    { "path": "/api/cron/finalize-clips", "schedule": "0 1 * * *" }
+    { "path": "/api/cron/finalize-clips", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/bot-flag-clips", "schedule": "30 2 * * *" }
   ]
 }
