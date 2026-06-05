@@ -226,6 +226,13 @@ export default async function AdminClipsPage({
               clear
             </a>
           )}
+          <span className="ml-auto" />
+          <a
+            href="/admin/clips/review"
+            className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
+          >
+            bot review →
+          </a>
         </form>
 
         <div className="flex flex-wrap items-center gap-2">
