@@ -6,6 +6,11 @@ import { fmtRelative } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
+import {
+  BulkFlagResolveProvider,
+  BulkFlagCheckbox,
+  BulkFlagSelectAll,
+} from "@/components/admin/BulkFlagResolve";
 
 export const dynamic = "force-dynamic";
 
@@ -122,11 +127,24 @@ export default async function AdminFlagsPage({
           </div>
         </section>
 
+        <BulkFlagResolveProvider>
         <section className="flex flex-col gap-3">
-          <h2 className="label">flagged clips</h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="label">flagged clips</h2>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+              select open flags below to dismiss false positives in bulk
+            </span>
+          </div>
           <div className="border border-border">
             <Table>
               <THead>
+                <TH>
+                  <BulkFlagSelectAll
+                    ids={(clipFlags ?? [])
+                      .filter((f: any) => !f.resolved_at)
+                      .map((f: any) => f.id)}
+                  />
+                </TH>
                 <TH>handle</TH>
                 <TH>tweet</TH>
                 <TH>reason</TH>
@@ -138,6 +156,9 @@ export default async function AdminFlagsPage({
               <TBody>
                 {(clipFlags ?? []).map((f: any) => (
                   <TR key={f.id}>
+                    <TD>
+                      <BulkFlagCheckbox flagId={f.id} disabled={!!f.resolved_at} />
+                    </TD>
                     <TD className="font-mono">
                       {f.clip?.clipper ? (
                         <Link
@@ -188,13 +209,14 @@ export default async function AdminFlagsPage({
                 {(!clipFlags || clipFlags.length === 0) && (
                   <TR>
                     <TD className="text-text-3 font-mono text-sm">no flagged clips</TD>
-                    <TD /><TD /><TD /><TD /><TD /><TD />
+                    <TD /><TD /><TD /><TD /><TD /><TD /><TD />
                   </TR>
                 )}
               </TBody>
             </Table>
           </div>
         </section>
+        </BulkFlagResolveProvider>
       </main>
     </div>
   );
