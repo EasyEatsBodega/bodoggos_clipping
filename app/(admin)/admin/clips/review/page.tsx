@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { BottingButton } from "@/components/admin/BottingButton";
+import { ReviewDismissButton } from "@/components/admin/ReviewDismissButton";
 import { fetchAllPages } from "@/lib/queries";
 import {
   rollupByClipper,
@@ -57,17 +58,29 @@ export default async function BotReviewPage() {
     ),
   ]);
 
-  // Open clip flags so we can mark which review rows are already in the
-  // inbox awaiting a decision (typically auto-filed by the bot-flag cron).
-  const openFlags = await fetchAllPages<{ clip_id: string }>((from, to) =>
-    admin
-      .from("clip_flags")
-      .select("clip_id")
-      .is("resolved_at", null)
-      .order("clip_id", { ascending: true })
-      .range(from, to),
+  // All clip flags, open and resolved. Open flags mark rows already in the
+  // /admin/flags inbox; a RESOLVED flag means an admin reviewed the clip and
+  // cleared it (dismissed as not botting) — those clips are excluded from
+  // the suspect lists entirely so the queue shrinks as you work through it.
+  const allFlags = await fetchAllPages<{ clip_id: string; resolved_at: string | null }>(
+    (from, to) =>
+      admin
+        .from("clip_flags")
+        .select("clip_id, resolved_at")
+        .order("clip_id", { ascending: true })
+        .range(from, to),
   );
-  const flaggedClipIds = new Set(openFlags.map((f) => f.clip_id));
+  const flaggedClipIds = new Set(
+    allFlags.filter((f) => !f.resolved_at).map((f) => f.clip_id),
+  );
+  const reviewedClipIds = new Set(
+    allFlags.filter((f) => f.resolved_at).map((f) => f.clip_id),
+  );
+  // A clip with an open flag is still pending review even if an older flag
+  // on it was resolved.
+  for (const id of flaggedClipIds) reviewedClipIds.delete(id);
+
+  const reviewableClips = clips.filter((c) => !reviewedClipIds.has(c.id));
 
   const handleOf = new Map(clippers.map((c) => [c.id, c.x_handle]));
 
@@ -79,17 +92,17 @@ export default async function BotReviewPage() {
     snapsByClip.set(s.clip_id, cur);
   }
   const scoreByClip = new Map<string, ClipScore>();
-  for (const c of clips) {
+  for (const c of reviewableClips) {
     scoreByClip.set(c.id, scoreClip(c, snapsByClip.get(c.id) ?? []));
   }
 
-  const topClips = [...clips]
+  const topClips = [...reviewableClips]
     .map((c) => ({ clip: c, score: scoreByClip.get(c.id)! }))
     .filter((x) => x.score.composite >= 0.4)
     .sort((a, b) => b.score.composite - a.score.composite)
     .slice(0, TOP_CLIPS);
 
-  const topClippers = rollupByClipper(clips, scoreByClip)
+  const topClippers = rollupByClipper(reviewableClips, scoreByClip)
     .filter((r) => r.suspectCount >= 2 || r.meanScore >= 0.5)
     .slice(0, TOP_CLIPPERS);
 
@@ -112,15 +125,19 @@ export default async function BotReviewPage() {
             Surfaces clips and clippers whose impression patterns look like
             purchased traffic — single-hour view bursts, flat growth after a
             spike, suspiciously round totals. Last {LOOKBACK_DAYS} days,
-            excluding already-rejected and already-marked-botting clips.
-            Click <span className="text-admin">mark botting</span> to
-            confirm; the detected reason is pre-filled.
+            excluding already-rejected, already-marked-botting, and
+            already-reviewed clips. Click{" "}
+            <span className="text-admin">mark botting</span> to confirm (the
+            detected reason is pre-filled) or{" "}
+            <span className="text-accent">not botting</span> to clear — cleared
+            clips drop off this list and won&apos;t be re-flagged.
           </p>
           <p className="font-mono text-[10px] uppercase tracking-widest text-text-3 max-w-3xl">
             A daily cron auto-files a clip flag for any clip scoring{" "}
             <span className="text-admin">≥ 60</span>. Flagged rows show ⚑ below
             and appear in <Link href="/admin/flags" className="hover:underline">/admin/flags</Link>.
-            Marking a clip as botting auto-resolves its flag.
+            Marking a clip as botting auto-resolves its flag; dismissing a
+            flag (here or anywhere) counts as reviewed.
           </p>
         </section>
 
@@ -217,6 +234,7 @@ export default async function BotReviewPage() {
                   <TH>biggest hour</TH>
                   <TH>submitted</TH>
                   <TH />
+                  <TH />
                 </THead>
                 <TBody>
                   {topClips.map(({ clip, score }) => {
@@ -291,6 +309,9 @@ export default async function BotReviewPage() {
                             suspected={false}
                             currentReason={score.reasonSummary}
                           />
+                        </TD>
+                        <TD>
+                          <ReviewDismissButton clipId={clip.id} />
                         </TD>
                       </TR>
                     );
