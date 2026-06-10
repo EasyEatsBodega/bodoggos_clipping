@@ -9,6 +9,11 @@ import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { FlagButton } from "@/components/admin/FlagButton";
 import { TagPicker } from "@/components/admin/TagPicker";
 import { AdminNav } from "@/components/admin/AdminNav";
+import {
+  BulkBottingProvider,
+  BulkBottingCheckbox,
+  BulkBottingSelectAll,
+} from "@/components/admin/BulkBottingSelect";
 import type { ClipTag } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
@@ -412,9 +417,15 @@ export default async function AdminClipsPage({
           );
         })()}
 
+        <BulkBottingProvider>
         <div className="border border-border">
           <Table>
             <THead>
+              <TH>
+                <BulkBottingSelectAll
+                  ids={filtered.filter((c) => !c.botting_suspected).map((c) => c.id)}
+                />
+              </TH>
               <SortTH base={baseParams} col="handle" sortCol={sortCol} sortDir={sortDir}>handle</SortTH>
               <SortTH base={baseParams} col="tweet" sortCol={sortCol} sortDir={sortDir}>tweet</SortTH>
               <SortTH base={baseParams} col="submitted" sortCol={sortCol} sortDir={sortDir}>submitted</SortTH>
@@ -436,6 +447,12 @@ export default async function AdminClipsPage({
                 const clipperId = (c as any).clipper?.id;
                 return (
                   <TR key={c.id}>
+                    <TD>
+                      <BulkBottingCheckbox
+                        clipId={c.id}
+                        disabled={c.botting_suspected}
+                      />
+                    </TD>
                     <TD className="font-mono">
                       {clipperId ? (
                         <Link
@@ -526,12 +543,13 @@ export default async function AdminClipsPage({
               {filtered.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
           </Table>
         </div>
+        </BulkBottingProvider>
       </main>
     </div>
   );
