@@ -10,6 +10,7 @@ import { weekStartET, weekEndET, fmtWeekRange } from "@/lib/week";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { PayoutsPerDayChart } from "@/components/admin/OverviewCharts";
 import { DeletePayoutButton } from "@/components/admin/DeletePayoutButton";
+import { RowPayButton } from "@/components/admin/RowPayButton";
 import { fetchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ type WeekRow = {
   clipperId: string;
   handle: string;
   banned: boolean;
+  wallet: string | null;
   clips: number;
   earnedCents: number;
   inFlightCents: number;
@@ -39,10 +41,15 @@ export default async function AdminPayoutsPage() {
   // money number; the visible payouts-log table stays capped at 500 since
   // it's just for display.
   const [clippers, clips, payouts, payoutLog] = await Promise.all([
-    fetchAllPages<{ id: string; x_handle: string; banned: boolean }>((from, to) =>
+    fetchAllPages<{
+      id: string;
+      x_handle: string;
+      banned: boolean;
+      solana_wallet: string | null;
+    }>((from, to) =>
       admin
         .from("clippers")
-        .select("id, x_handle, banned")
+        .select("id, x_handle, banned, solana_wallet")
         .order("id", { ascending: true })
         .range(from, to),
     ),
@@ -81,9 +88,16 @@ export default async function AdminPayoutsPage() {
       .then((r) => r.data ?? []),
   ]);
 
-  const handleOf = new Map<string, { handle: string; banned: boolean }>();
+  const handleOf = new Map<
+    string,
+    { handle: string; banned: boolean; wallet: string | null }
+  >();
   for (const c of clippers ?? []) {
-    handleOf.set(c.id, { handle: c.x_handle, banned: c.banned });
+    handleOf.set(c.id, {
+      handle: c.x_handle,
+      banned: c.banned,
+      wallet: c.solana_wallet,
+    });
   }
 
   const allTime = new Map<string, { earnedCents: number; paidCents: number }>();
@@ -103,12 +117,13 @@ export default async function AdminPayoutsPage() {
     const get = (id: string): WeekRow => {
       let r = rows.get(id);
       if (!r) {
-        const meta = handleOf.get(id) ?? { handle: "—", banned: false };
+        const meta = handleOf.get(id) ?? { handle: "—", banned: false, wallet: null };
         const at = allTime.get(id) ?? { earnedCents: 0, paidCents: 0 };
         r = {
           clipperId: id,
           handle: meta.handle,
           banned: meta.banned,
+          wallet: meta.wallet,
           clips: 0,
           earnedCents: 0,
           inFlightCents: 0,
@@ -347,6 +362,7 @@ function WeekTable({ rows }: { rows: WeekRow[] }) {
           <TH>earned this wk</TH>
           <TH>in-flight</TH>
           <TH>outstanding (all)</TH>
+          <TH>pay</TH>
         </THead>
         <TBody>
           {rows.map((r) => (
@@ -367,12 +383,20 @@ function WeekTable({ rows }: { rows: WeekRow[] }) {
                 {r.inFlightCents > 0 ? `~${fmtUsd((r.inFlightCents / 100).toFixed(2))}` : "—"}
               </TD>
               <TD className="num text-admin">{fmtUsd((r.outstandingCents / 100).toFixed(2))}</TD>
+              <TD>
+                <RowPayButton
+                  clipperId={r.clipperId}
+                  handle={r.handle}
+                  recipientWallet={r.wallet}
+                  owedCents={r.outstandingCents}
+                />
+              </TD>
             </TR>
           ))}
           {rows.length === 0 && (
             <TR>
               <TD className="text-text-3 font-mono text-sm">no clips in this week</TD>
-              <TD /><TD /><TD /><TD />
+              <TD /><TD /><TD /><TD /><TD />
             </TR>
           )}
         </TBody>
