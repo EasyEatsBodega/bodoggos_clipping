@@ -109,7 +109,37 @@ export function SolanaUsdcPayoutPanel({
       return;
     }
 
+    // Preflight the tax hold BEFORE any USDC moves. This is the only point
+    // where a hold can stop a payment — after the transfer is on-chain, the
+    // confirm endpoint records it no matter what (annotated), because
+    // refusing to record an already-sent payment just corrupts the books.
     setStatus("building");
+    try {
+      const preflight = await fetch("/api/admin/payouts/tax-hold-check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clipper_id: clipperId, amount: Number(amount) }),
+      });
+      if (preflight.ok) {
+        const holdInfo = (await preflight.json()) as {
+          blocked: boolean;
+          reason?: string;
+        };
+        if (holdInfo.blocked) {
+          const proceed = window.confirm(
+            `${holdInfo.reason ?? "payment on tax hold"}\n\nPay anyway? The payment will be recorded with a tax-hold note.`,
+          );
+          if (!proceed) {
+            setStatus("idle");
+            return;
+          }
+        }
+      }
+      // A failed preflight request (network blip) falls through — the hold
+      // is advisory and must never strand a payment the admin intends.
+    } catch {
+      // ignore — see above
+    }
     try {
       const recipientAta = await getAssociatedTokenAddress(USDC_MINT, recipient);
 

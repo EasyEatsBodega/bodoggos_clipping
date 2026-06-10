@@ -46,8 +46,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "clipper has no Solana wallet on file" }, { status: 400 });
   }
 
+  // Tax hold is checked client-side BEFORE the transfer is sent (see
+  // SolanaUsdcPayoutPanel preflight). By the time this endpoint runs the
+  // USDC has already moved on-chain, so refusing to record would only make
+  // the books wrong and invite double payment. Record regardless; annotate
+  // the payout note when a hold was active.
   const hold = await checkPayoutTaxHold(auth.admin, clipper.id, parsed.data.amount);
-  if (hold.blocked) return NextResponse.json({ error: hold.reason }, { status: 403 });
+  const holdNote = hold.blocked ? "[tax hold active at time of payment]" : null;
 
   let recipient: PublicKey;
   try {
@@ -154,7 +159,7 @@ export async function POST(req: Request) {
       amount: parsed.data.amount,
       chain: "Solana",
       tx_hash: parsed.data.signature,
-      note: parsed.data.note ?? null,
+      note: [parsed.data.note, holdNote].filter(Boolean).join(" ") || null,
       created_by: auth.user.id,
     })
     .select("id")
