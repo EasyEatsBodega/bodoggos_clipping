@@ -55,11 +55,14 @@ async function handle(req: Request) {
         .order("captured_at", { ascending: true })
         .range(from, to),
     ),
+    // ANY flag history — open or resolved — exempts a clip from re-flagging.
+    // A resolved flag means an admin already reviewed the clip (dismissed as
+    // not botting, or marked botting which excludes it anyway); re-filing
+    // would put reviewed clips back in the inbox every night.
     fetchAllPages<{ clip_id: string }>((from, to) =>
       admin
         .from("clip_flags")
         .select("clip_id")
-        .is("resolved_at", null)
         .order("clip_id", { ascending: true })
         .range(from, to),
     ),
