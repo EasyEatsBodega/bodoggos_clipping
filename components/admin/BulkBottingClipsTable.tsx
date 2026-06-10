@@ -43,6 +43,23 @@ export function BulkBottingClipsTable({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [flaggedFirst, setFlaggedFirst] = useState(false);
+
+  // Float clips with open flags to the top for review. Array.sort is stable,
+  // so within each group the original (newest-first) order is preserved.
+  const visibleClips = useMemo(() => {
+    if (!flaggedFirst) return clips;
+    return [...clips].sort(
+      (a, b) =>
+        ((openFlagCountByClip[b.id] ?? 0) > 0 ? 1 : 0) -
+        ((openFlagCountByClip[a.id] ?? 0) > 0 ? 1 : 0),
+    );
+  }, [clips, flaggedFirst, openFlagCountByClip]);
+
+  const flaggedCount = useMemo(
+    () => clips.filter((c) => (openFlagCountByClip[c.id] ?? 0) > 0).length,
+    [clips, openFlagCountByClip],
+  );
 
   // Only un-marked clips are eligible for bulk botting. Showing already-
   // marked clips in the table is fine but they don't take a checkbox.
@@ -143,6 +160,17 @@ export function BulkBottingClipsTable({
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFlaggedFirst((v) => !v)}
+          className={`btn ${flaggedFirst ? "btn-primary" : "btn-ghost"}`}
+          style={flaggedFirst ? { background: "var(--admin)" } : undefined}
+          title="Sort clips with open flags to the top"
+        >
+          flagged ⚑ first{flaggedCount > 0 ? ` (${flaggedCount})` : ""}
+        </button>
+      </div>
       <div className="border border-border">
         <Table>
           <THead>
@@ -168,7 +196,7 @@ export function BulkBottingClipsTable({
             <TH />
           </THead>
           <TBody>
-            {clips.map((c) => {
+            {visibleClips.map((c) => {
               const fc = openFlagCountByClip[c.id] ?? 0;
               const checkable = !c.botting_suspected;
               return (

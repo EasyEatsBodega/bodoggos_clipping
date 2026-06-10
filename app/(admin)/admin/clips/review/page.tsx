@@ -6,6 +6,7 @@ import { fmtInt, fmtRelative } from "@/lib/format";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { BottingButton } from "@/components/admin/BottingButton";
 import { ReviewDismissButton } from "@/components/admin/ReviewDismissButton";
+import { ReviewDismissClipperButton } from "@/components/admin/ReviewDismissClipperButton";
 import { fetchAllPages } from "@/lib/queries";
 import {
   rollupByClipper,
@@ -165,6 +166,7 @@ export default async function BotReviewPage() {
                   <TH>same-hour pattern</TH>
                   <TH>impressions (window)</TH>
                   <TH />
+                  <TH />
                 </THead>
                 <TBody>
                   {topClippers.map((r) => (
@@ -197,6 +199,12 @@ export default async function BotReviewPage() {
                         >
                           their clips →
                         </Link>
+                      </TD>
+                      <TD>
+                        <ReviewDismissClipperButton
+                          clipperId={r.clipperId}
+                          handle={handleOf.get(r.clipperId) ?? "clipper"}
+                        />
                       </TD>
                     </TR>
                   ))}
