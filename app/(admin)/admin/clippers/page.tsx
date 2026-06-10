@@ -420,7 +420,7 @@ export default async function AdminClippersPage({
                           ? "text-danger"
                           : r.roster_active
                             ? "text-accent"
-                            : "text-text-3"
+                            : "text-danger font-bold"
                       }`}
                       title={
                         r.banned
