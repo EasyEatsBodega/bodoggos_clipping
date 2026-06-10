@@ -26,6 +26,7 @@ export default async function AdminClipsPage({
     q?: string;
     clipper?: string;
     tag?: string;
+    creators?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -39,6 +40,14 @@ export default async function AdminClipsPage({
   const q = (sp.q ?? "").trim();
   const clipperFilter = sp.clipper ?? undefined;
   const tagFilter = (sp.tag ?? "").trim() || undefined;
+  const creatorsFilter:
+    | "multi"
+    | "single"
+    | "none"
+    | undefined =
+    sp.creators === "multi" || sp.creators === "single" || sp.creators === "none"
+      ? sp.creators
+      : undefined;
   const sortCol = (VALID_SORT as string[]).includes(sp.sort ?? "")
     ? (sp.sort as SortCol)
     : ("submitted" as SortCol);
@@ -181,9 +190,27 @@ export default async function AdminClipsPage({
     cur.push(a.tag_id);
     target.set(a.clip_id, cur);
   }
-  const filtered = flagged ? clips.filter((c) => flagCount.has(c.id)) : clips;
+  let filtered = flagged ? clips.filter((c) => flagCount.has(c.id)) : clips;
+  // Creator-count filter applied in-memory against the assignments map we
+  // already loaded above. The base clips query is capped at 500 rows, so
+  // this filter operates on the same slice the page would otherwise show.
+  if (creatorsFilter) {
+    filtered = filtered.filter((c) => {
+      const n = (creatorIdsByClip.get(c.id) ?? []).length;
+      if (creatorsFilter === "multi") return n >= 2;
+      if (creatorsFilter === "single") return n === 1;
+      return n === 0; // "none"
+    });
+  }
 
-  const baseParams = { status, flagged, q, clipper: clipperFilter, tag: tagFilter };
+  const baseParams = {
+    status,
+    flagged,
+    q,
+    clipper: clipperFilter,
+    tag: tagFilter,
+    creators: creatorsFilter,
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -210,6 +237,7 @@ export default async function AdminClipsPage({
           {flagged && <input type="hidden" name="flagged" value="1" />}
           {clipperFilter && <input type="hidden" name="clipper" value={clipperFilter} />}
           {tagFilter && <input type="hidden" name="tag" value={tagFilter} />}
+          {creatorsFilter && <input type="hidden" name="creators" value={creatorsFilter} />}
           {sortCol !== "submitted" && <input type="hidden" name="sort" value={sortCol} />}
           {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
           <button
@@ -218,7 +246,7 @@ export default async function AdminClipsPage({
           >
             search
           </button>
-          {(q || status || flagged || clipperFilter || tagFilter) && (
+          {(q || status || flagged || clipperFilter || tagFilter || creatorsFilter) && (
             <a
               href="/admin/clips"
               className="font-mono text-[10px] uppercase tracking-widest text-text-3 hover:text-text"
@@ -257,6 +285,40 @@ export default async function AdminClipsPage({
               @{clipperFilterHandle ?? "clipper"} ✕
             </Link>
           )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+            creators:
+          </span>
+          <CreatorsFilter
+            base={baseParams}
+            sortCol={sortCol}
+            sortDir={sortDir}
+            value={undefined}
+            label="all"
+          />
+          <CreatorsFilter
+            base={baseParams}
+            sortCol={sortCol}
+            sortDir={sortDir}
+            value="single"
+            label="single"
+          />
+          <CreatorsFilter
+            base={baseParams}
+            sortCol={sortCol}
+            sortDir={sortDir}
+            value="multi"
+            label="multi"
+          />
+          <CreatorsFilter
+            base={baseParams}
+            sortCol={sortCol}
+            sortDir={sortDir}
+            value="none"
+            label="none"
+          />
         </div>
 
         {(() => {
@@ -481,6 +543,7 @@ type BaseParams = {
   q: string;
   clipper?: string;
   tag?: string;
+  creators?: "multi" | "single" | "none";
 };
 
 function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
@@ -490,6 +553,7 @@ function buildHref(opts: BaseParams & { sort?: string; dir?: string }): string {
   if (opts.q) params.set("q", opts.q);
   if (opts.clipper) params.set("clipper", opts.clipper);
   if (opts.tag) params.set("tag", opts.tag);
+  if (opts.creators) params.set("creators", opts.creators);
   if (opts.sort && opts.sort !== "submitted") params.set("sort", opts.sort);
   if (opts.dir && opts.dir !== "desc") params.set("dir", opts.dir);
   const qs = params.toString();
@@ -511,6 +575,32 @@ function Filter({
 }) {
   const active = base.status === value;
   const href = buildHref({ ...base, status: value, sort: sortCol, dir: sortDir });
+  return (
+    <a
+      href={href}
+      className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
+      style={active ? { background: "var(--admin)" } : undefined}
+    >
+      {label}
+    </a>
+  );
+}
+
+function CreatorsFilter({
+  base,
+  sortCol,
+  sortDir,
+  value,
+  label,
+}: {
+  base: BaseParams;
+  sortCol: string;
+  sortDir: string;
+  value: "multi" | "single" | "none" | undefined;
+  label: string;
+}) {
+  const active = base.creators === value;
+  const href = buildHref({ ...base, creators: value, sort: sortCol, dir: sortDir });
   return (
     <a
       href={href}

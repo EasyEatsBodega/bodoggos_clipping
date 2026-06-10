@@ -11,6 +11,7 @@ import { RejectClipButton } from "@/components/admin/RejectClipButton";
 import { DeleteClipButton } from "@/components/admin/DeleteClipButton";
 import { DeleteClipperButton } from "@/components/admin/DeleteClipperButton";
 import { DeletePayoutButton } from "@/components/admin/DeletePayoutButton";
+import { BulkBottingClipsTable, type ClipRow } from "@/components/admin/BulkBottingClipsTable";
 import { FlagButton } from "@/components/admin/FlagButton";
 import { FlagResolveButton } from "@/components/admin/FlagResolveButton";
 import { FlagDeleteButton } from "@/components/admin/FlagDeleteButton";
@@ -325,85 +326,22 @@ export default async function AdminClipperDetailPage({
 
         <section className="flex flex-col gap-3">
           <h2 className="label">clips</h2>
-          <div className="border border-border">
-            <Table>
-              <THead>
-                <TH>tweet</TH>
-                <TH>submitted</TH>
-                <TH>impressions</TH>
-                <TH>earned</TH>
-                <TH>status</TH>
-                <TH />
-                <TH />
-                <TH />
-                <TH />
-              </THead>
-              <TBody>
-                {(clips ?? []).map((c) => {
-                  const fc = openClipFlagCount.get(c.id) ?? 0;
-                  return (
-                    <TR key={c.id}>
-                      <TD className="font-mono text-xs text-text-2 max-w-[260px] truncate">
-                        <a
-                          href={c.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline"
-                        >
-                          {c.url}
-                        </a>
-                      </TD>
-                      <TD className="font-mono text-xs text-text-2">{fmtRelative(c.submitted_at)}</TD>
-                      <TD className="num">{fmtInt(c.final_impressions ?? c.impressions)}</TD>
-                      <TD className="num">
-                        {c.botting_suspected ? (
-                          <span className="text-danger" title={c.botting_reason ?? ""}>
-                            excluded
-                          </span>
-                        ) : c.payout_amount ? (
-                          fmtUsd(c.payout_amount)
-                        ) : (
-                          "—"
-                        )}
-                      </TD>
-                      <TD className="font-mono text-[10px] uppercase tracking-widest">
-                        {c.status}
-                        {fc > 0 && (
-                          <span className="ml-2 text-admin" title={`${fc} open flag${fc === 1 ? "" : "s"}`}>
-                            ⚑{fc > 1 ? fc : ""}
-                          </span>
-                        )}
-                        {c.botting_suspected && (
-                          <span
-                            className="ml-2 text-danger"
-                            title={c.botting_reason ?? "suspected engagement farming"}
-                          >
-                            botting
-                          </span>
-                        )}
-                      </TD>
-                      <TD>
-                        <BottingButton
-                          clipId={c.id}
-                          suspected={c.botting_suspected}
-                          currentReason={c.botting_reason}
-                        />
-                      </TD>
-                      <TD>
-                        <FlagButton target="clip" id={c.id} flagged={fc > 0} />
-                      </TD>
-                      <TD>
-                        <RejectClipButton clipId={c.id} status={c.status} />
-                      </TD>
-                      <TD>
-                        <DeleteClipButton clipId={c.id} />
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-          </div>
+          <BulkBottingClipsTable
+            clips={(clips ?? []).map(
+              (c): ClipRow => ({
+                id: c.id,
+                url: c.url,
+                submitted_at: c.submitted_at,
+                status: c.status,
+                impressions: c.impressions,
+                final_impressions: c.final_impressions,
+                payout_amount: c.payout_amount,
+                botting_suspected: c.botting_suspected,
+                botting_reason: c.botting_reason,
+              }),
+            )}
+            openFlagCountByClip={Object.fromEntries(openClipFlagCount.entries())}
+          />
         </section>
 
         <section className="flex flex-col gap-3">

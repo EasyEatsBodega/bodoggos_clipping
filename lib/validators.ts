@@ -27,6 +27,11 @@ export const bottingMarkSchema = z.object({
   reason: z.string().min(1).max(1000),
 });
 
+export const bulkBottingMarkSchema = z.object({
+  clip_ids: z.array(z.string().uuid()).min(1).max(500),
+  reason: z.string().min(1).max(1000),
+});
+
 export const resolveFlagSchema = z.object({
   resolution: z.string().max(500).optional(),
 });
