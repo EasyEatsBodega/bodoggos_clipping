@@ -6,6 +6,7 @@ import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { computePayoutCents, computeRollingOwedCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { RowPayButton } from "@/components/admin/RowPayButton";
+import { RosterActiveToggle } from "@/components/admin/RosterActiveToggle";
 import { TaxRequestButton, type TaxRowState } from "@/components/admin/TaxRequestButton";
 import { currentTaxYear } from "@/lib/tax-compliance";
 import { fetchAllPages } from "@/lib/queries";
@@ -69,7 +70,10 @@ export default async function AdminClippersPage({
 }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const statusFilter = sp.status === "active" || sp.status === "banned" ? sp.status : undefined;
+  const statusFilter =
+    sp.status === "active" || sp.status === "banned" || sp.status === "inactive"
+      ? sp.status
+      : undefined;
   const onlyFlagged = sp.flagged === "1";
   const onlyCustom = sp.custom === "1";
   const sortCol = (VALID_SORT as string[]).includes(sp.sort ?? "")
@@ -88,8 +92,11 @@ export default async function AdminClippersPage({
   const buildClippers = (from: number, to: number) => {
     let qb = admin.from("clippers").select("*");
     if (like) qb = qb.or(`x_handle.ilike.${like},email.ilike.${like}`);
-    if (statusFilter === "active") qb = qb.eq("banned", false);
+    // "active" = on the roster and not banned; "inactive" = deactivated
+    // from the roster (their new submissions are rejected).
+    if (statusFilter === "active") qb = qb.eq("banned", false).eq("roster_active", true);
     if (statusFilter === "banned") qb = qb.eq("banned", true);
+    if (statusFilter === "inactive") qb = qb.eq("roster_active", false);
     if (onlyCustom) {
       qb = qb.or(
         "flat_fee_per_clip.gt.0,cpm_rate_override.not.is.null,max_payout_override.not.is.null",
@@ -107,6 +114,7 @@ export default async function AdminClippersPage({
       solana_wallet: string | null;
       joined_at: string;
       banned: boolean;
+      roster_active: boolean;
       flat_fee_per_clip: string;
       cpm_rate_override: string | null;
       max_payout_override: string | null;
@@ -235,6 +243,7 @@ export default async function AdminClippersPage({
     solana_wallet: string | null;
     joined_at: string;
     banned: boolean;
+    roster_active: boolean;
     flat_fee_per_clip: string;
     cpm_rate_override: string | null;
     max_payout_override: string | null;
@@ -263,6 +272,7 @@ export default async function AdminClippersPage({
         solana_wallet: c.solana_wallet,
         joined_at: c.joined_at,
         banned: c.banned,
+        roster_active: c.roster_active,
         flat_fee_per_clip: c.flat_fee_per_clip,
         cpm_rate_override: c.cpm_rate_override,
         max_payout_override: c.max_payout_override,
@@ -336,6 +346,7 @@ export default async function AdminClippersPage({
         <div className="flex flex-wrap items-center gap-2">
           <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value={undefined} label="all" />
           <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value="active" label="active" />
+          <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value="inactive" label="inactive" />
           <FilterPill base={baseParams} sortCol={sortCol} sortDir={sortDir} value="banned" label="banned" />
           <span className="w-px h-5 bg-border mx-1" />
           <TogglePill on={onlyFlagged} base={baseParams} sortCol={sortCol} sortDir={sortDir} param="flagged" label="flagged ⚑" />
@@ -405,10 +416,21 @@ export default async function AdminClippersPage({
                   <TD>
                     <span
                       className={`font-mono text-[10px] uppercase tracking-widest ${
-                        r.banned ? "text-danger" : "text-accent"
+                        r.banned
+                          ? "text-danger"
+                          : r.roster_active
+                            ? "text-accent"
+                            : "text-text-3"
                       }`}
+                      title={
+                        r.banned
+                          ? "banned — login suspended"
+                          : r.roster_active
+                            ? "on the roster — clips count"
+                            : "off the roster — new submissions rejected; existing clips still pay out"
+                      }
                     >
-                      {r.banned ? "banned" : "active"}
+                      {r.banned ? "banned" : r.roster_active ? "active" : "inactive"}
                     </span>
                     {r.flags > 0 && (
                       <span
@@ -416,6 +438,15 @@ export default async function AdminClippersPage({
                         title={`${r.flags} open flag${r.flags === 1 ? "" : "s"}`}
                       >
                         ⚑{r.flags > 1 ? r.flags : ""}
+                      </span>
+                    )}
+                    {!r.banned && (
+                      <span className="ml-2">
+                        <RosterActiveToggle
+                          clipperId={r.id}
+                          handle={r.x_handle}
+                          initial={r.roster_active}
+                        />
                       </span>
                     )}
                   </TD>

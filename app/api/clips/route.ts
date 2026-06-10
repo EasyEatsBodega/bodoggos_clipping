@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const { data: clipper, error: clipperErr } = await supabase
     .from("clippers")
     .select(
-      "id, x_handle, banned, flat_fee_per_clip, cpm_rate_override, max_payout_override",
+      "id, x_handle, banned, roster_active, flat_fee_per_clip, cpm_rate_override, max_payout_override",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -34,6 +34,14 @@ export async function POST(req: Request) {
   }
   if (!clipper) return NextResponse.json({ error: "no clipper profile" }, { status: 403 });
   if (clipper.banned) return NextResponse.json({ error: "account suspended" }, { status: 403 });
+  // Roster gate: deactivated clippers keep their dashboard and history but
+  // can't add new clips, so future submissions don't count toward spend.
+  if (clipper.roster_active === false) {
+    return NextResponse.json(
+      { error: "your account is not on the active roster — new submissions are paused" },
+      { status: 403 },
+    );
+  }
 
   const parsedUrl = parseTweetUrl(parsed.data.url);
   if (!parsedUrl) {
