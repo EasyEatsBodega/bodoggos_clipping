@@ -36,10 +36,16 @@ export const resolveFlagSchema = z.object({
   resolution: z.string().max(500).optional(),
 });
 
-export const bulkResolveFlagsSchema = z.object({
-  flag_ids: z.array(z.string().uuid()).min(1).max(500),
-  resolution: z.string().max(500).optional(),
-});
+export const bulkResolveFlagsSchema = z
+  .object({
+    flag_ids: z.array(z.string().uuid()).max(500).optional(),
+    clip_ids: z.array(z.string().uuid()).max(500).optional(),
+    resolution: z.string().max(500).optional(),
+  })
+  .refine(
+    (d) => (d.flag_ids?.length ?? 0) > 0 || (d.clip_ids?.length ?? 0) > 0,
+    { message: "flag_ids or clip_ids required" },
+  );
 
 export const payoutSchema = z.object({
   clipper_id: z.string().uuid(),
