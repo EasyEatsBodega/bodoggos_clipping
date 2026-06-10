@@ -8,6 +8,7 @@ export type Clipper = {
   banned: boolean;
   banned_at: string | null;
   banned_reason: string | null;
+  roster_active: boolean;
   solana_wallet: string | null;
   flat_fee_per_clip: string;
   cpm_rate_override: string | null;

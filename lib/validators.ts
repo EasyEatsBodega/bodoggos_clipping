@@ -10,6 +10,10 @@ export const banSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+export const rosterActiveSchema = z.object({
+  active: z.boolean(),
+});
+
 export const overrideClipSchema = z.object({
   impressions: z.number().int().nonnegative(),
   reason: z.string().min(1).max(500),

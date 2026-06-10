@@ -20,11 +20,12 @@ export async function GET() {
       x_handle: string;
       joined_at: string;
       banned: boolean;
+      roster_active: boolean;
       solana_wallet: string | null;
     }>((from, to) =>
       auth.admin
         .from("clippers")
-        .select("id, email, x_handle, joined_at, banned, solana_wallet")
+        .select("id, email, x_handle, joined_at, banned, roster_active, solana_wallet")
         .order("joined_at", { ascending: true })
         .range(from, to),
     ),
@@ -115,6 +116,7 @@ export async function GET() {
       email: c.email,
       joined_at: c.joined_at,
       banned: c.banned ? "yes" : "",
+      active: c.roster_active ? "yes" : "no",
       solana_wallet: c.solana_wallet ?? "",
       total_clips: s.clips,
       active_clips: s.activeClips,
@@ -133,6 +135,7 @@ export async function GET() {
     "email",
     "joined_at",
     "banned",
+    "active",
     "solana_wallet",
     "total_clips",
     "active_clips",
