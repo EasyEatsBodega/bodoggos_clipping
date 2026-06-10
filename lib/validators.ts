@@ -36,6 +36,11 @@ export const resolveFlagSchema = z.object({
   resolution: z.string().max(500).optional(),
 });
 
+export const bulkResolveFlagsSchema = z.object({
+  flag_ids: z.array(z.string().uuid()).min(1).max(500),
+  resolution: z.string().max(500).optional(),
+});
+
 export const payoutSchema = z.object({
   clipper_id: z.string().uuid(),
   amount: z.number().positive(),
