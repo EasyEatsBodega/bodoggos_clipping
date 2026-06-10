@@ -53,9 +53,7 @@ export function RosterActiveToggle({
           ? "Deactivate — reject their new clip submissions"
           : "Reactivate — allow new clip submissions again"
       }
-      className={`font-mono text-[10px] uppercase tracking-widest hover:underline disabled:opacity-50 ${
-        active ? "text-text-3" : "text-accent"
-      }`}
+      className="font-mono text-[10px] uppercase tracking-widest text-text-3 hover:text-text hover:underline disabled:opacity-50"
     >
       {busy ? "…" : active ? "deactivate" : "activate"}
     </button>
