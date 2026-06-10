@@ -27,6 +27,7 @@ import {
   computePayoutCents,
   computeRollingOwedCents,
   latestMarksByClipId,
+  billableImpressions,
 } from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
@@ -327,8 +328,30 @@ export default async function AdminClipperDetailPage({
         <section className="flex flex-col gap-3">
           <h2 className="label">clips</h2>
           <BulkBottingClipsTable
-            clips={(clips ?? []).map(
-              (c): ClipRow => ({
+            clips={(clips ?? []).map((c): ClipRow => {
+              // Per-clip payment state from the payout watermarks. A clip is
+              // "paid" when earnings at its current billable impressions are
+              // fully covered by the latest payout_clip_marks watermark —
+              // the same math the rolling-owed total uses, scoped to one clip.
+              let paidState: ClipRow["paid_state"] = null;
+              let dueAmount: string | null = null;
+              if (c.status !== "rejected" && !c.botting_suspected) {
+                const earnedNowCents = computePayoutCents(
+                  billableImpressions(c),
+                  c.cpm_rate_snapshot,
+                  c.max_payout_snapshot,
+                  c.flat_fee_snapshot ?? 0,
+                  c.min_views_snapshot ?? 0,
+                );
+                const owedCents = computeRollingOwedCents([c], marksMap);
+                if (owedCents > 0) {
+                  paidState = "due";
+                  dueAmount = `$${(owedCents / 100).toFixed(2)}`;
+                } else if (earnedNowCents > 0 && marksMap.has(c.id)) {
+                  paidState = c.status === "completed" ? "paid" : "paid_to_date";
+                }
+              }
+              return {
                 id: c.id,
                 url: c.url,
                 submitted_at: c.submitted_at,
@@ -338,8 +361,10 @@ export default async function AdminClipperDetailPage({
                 payout_amount: c.payout_amount,
                 botting_suspected: c.botting_suspected,
                 botting_reason: c.botting_reason,
-              }),
-            )}
+                paid_state: paidState,
+                due_amount: dueAmount,
+              };
+            })}
             openFlagCountByClip={Object.fromEntries(openClipFlagCount.entries())}
           />
         </section>
