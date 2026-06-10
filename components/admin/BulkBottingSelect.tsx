@@ -89,6 +89,35 @@ export function BulkBottingProvider({ children }: { children: React.ReactNode })
     );
   }
 
+  // The innocent verdict: resolve every open flag on the selected clips
+  // without touching botting state. Selected clips without flags are no-ops.
+  async function clearFlags() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const resolution = window.prompt(
+      `Clear all open flags on ${ids.length} selected clip${ids.length === 1 ? "" : "s"}?\n\nOptional note (stored as the resolution):`,
+      "false positive — reviewed, not botting",
+    );
+    if (resolution === null) return; // cancelled
+
+    setBusy(true);
+    const res = await fetch("/api/admin/flags/bulk-resolve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clip_ids: ids, resolution: resolution.trim() || undefined }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error ?? "Clearing flags failed");
+      return;
+    }
+    const j = (await res.json().catch(() => ({}))) as { resolved?: number };
+    setSelected(new Set());
+    router.refresh();
+    alert(`Cleared ${j.resolved ?? 0} open flag${(j.resolved ?? 0) === 1 ? "" : "s"}.`);
+  }
+
   return (
     <BulkCtx.Provider value={ctx}>
       {children}
@@ -105,6 +134,14 @@ export function BulkBottingProvider({ children }: { children: React.ReactNode })
               className="font-mono text-[10px] uppercase tracking-widest text-text-2 hover:text-text disabled:opacity-50"
             >
               clear
+            </button>
+            <button
+              type="button"
+              onClick={clearFlags}
+              disabled={busy}
+              className="font-mono text-[10px] uppercase tracking-widest px-3 py-2 border border-accent text-accent hover:bg-accent hover:text-bg disabled:opacity-50"
+            >
+              {busy ? "working…" : "clear flags (not botting)"}
             </button>
             <button
               type="button"
