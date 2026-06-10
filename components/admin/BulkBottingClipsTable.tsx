@@ -24,6 +24,13 @@ export type ClipRow = {
   payout_amount: string | null;
   botting_suspected: boolean;
   botting_reason: string | null;
+  // Payment state derived from payout_clip_marks watermarks:
+  //   "paid"         — completed, fully covered by a payout; nothing more accrues
+  //   "paid_to_date" — covered up to the latest watermark but still tracking
+  //   "due"          — earnings above the watermark not yet paid (due_amount set)
+  //   null           — nothing to pay (rejected / botting / zero earnings)
+  paid_state: "paid" | "paid_to_date" | "due" | null;
+  due_amount: string | null;
 };
 
 export function BulkBottingClipsTable({
@@ -153,6 +160,7 @@ export function BulkBottingClipsTable({
             <TH>submitted</TH>
             <TH>impressions</TH>
             <TH>earned</TH>
+            <TH>paid</TH>
             <TH>status</TH>
             <TH />
             <TH />
@@ -196,6 +204,23 @@ export function BulkBottingClipsTable({
                       fmtUsd(c.payout_amount)
                     ) : (
                       "—"
+                    )}
+                  </TD>
+                  <TD className="font-mono text-[10px] uppercase tracking-widest">
+                    {c.paid_state === "paid" ? (
+                      <span className="text-accent" title="fully covered by a payout; nothing more accrues">
+                        paid ✓
+                      </span>
+                    ) : c.paid_state === "paid_to_date" ? (
+                      <span className="text-text-2" title="covered up to the last payout; still tracking and accruing">
+                        paid to date
+                      </span>
+                    ) : c.paid_state === "due" ? (
+                      <span className="text-admin" title="earned above the last payout watermark; unpaid">
+                        due {c.due_amount ?? ""}
+                      </span>
+                    ) : (
+                      <span className="text-text-3">—</span>
                     )}
                   </TD>
                   <TD className="font-mono text-[10px] uppercase tracking-widest">
