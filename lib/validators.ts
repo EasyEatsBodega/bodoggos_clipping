@@ -84,6 +84,18 @@ export const taxInfoSchema = z.object({
   email: z.string().trim().email().max(254),
 });
 
+// Admin override for tax-clear: when an admin has collected the clipper's
+// tax info off-platform (DM, email, signed PDF, etc.) and wants to record
+// it directly + mark cleared without sending the clipper through the magic-
+// link submission flow. email is optional — falls back to the clipper's
+// account email server-side.
+export const adminTaxClearSchema = z.object({
+  legal_first_name: z.string().trim().min(1).max(100),
+  legal_last_name: z.string().trim().min(1).max(100),
+  country: z.string().trim().min(2).max(60),
+  email: z.string().trim().email().max(254).optional(),
+});
+
 export const walletSchema = z.object({
   solana_wallet: z
     .string()

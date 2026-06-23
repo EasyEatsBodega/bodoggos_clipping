@@ -38,6 +38,7 @@ export type TaxComplianceRow = {
   xHandle: string;
   accountEmail: string;
   earnedCents: number;
+  paidCents: number;
   state: TaxComplianceState;
   legalName: string | null;
   country: string | null;
@@ -47,23 +48,35 @@ export type TaxComplianceRow = {
 };
 
 // Every clipper relevant to tax compliance for a year: those who have reached
-// the $600 threshold and/or have submitted tax info. Sorted so the ones that
-// need action (submission, then clearance) come first.
+// the $600 threshold by EARNINGS or by ACTUAL PAYMENTS, and/or have submitted
+// tax info. The payment-side inclusion matters because the payout hold also
+// fires when a payment would push year-to-date paid past $600 — so a clipper
+// with low YTD earnings but high YTD payouts (advance-pay against in-flight)
+// needs to be clearable from this page too.
+// Sorted so the ones that need action (submission, then clearance) come first.
 export async function getTaxComplianceRows(
   supabase: SupabaseClient,
   year: number,
 ): Promise<TaxComplianceRow[]> {
-  const [{ data: clippers }, { data: clips }, { data: infos }] = await Promise.all([
-    supabase.from("clippers").select("id, x_handle, email"),
-    supabase.from("clips").select("clipper_id, status, payout_amount, tracking_until"),
-    supabase.from("clipper_tax_info").select("*").eq("tax_year", year),
-  ]);
+  const [{ data: clippers }, { data: clips }, { data: payouts }, { data: infos }] =
+    await Promise.all([
+      supabase.from("clippers").select("id, x_handle, email"),
+      supabase.from("clips").select("clipper_id, status, payout_amount, tracking_until"),
+      supabase.from("payouts").select("clipper_id, amount, paid_at"),
+      supabase.from("clipper_tax_info").select("*").eq("tax_year", year),
+    ]);
 
   const clipsByClipper = new Map<string, typeof clips>();
   for (const c of clips ?? []) {
     const arr = clipsByClipper.get(c.clipper_id) ?? [];
     arr.push(c);
     clipsByClipper.set(c.clipper_id, arr);
+  }
+  const payoutsByClipper = new Map<string, typeof payouts>();
+  for (const p of payouts ?? []) {
+    const arr = payoutsByClipper.get(p.clipper_id) ?? [];
+    arr.push(p);
+    payoutsByClipper.set(p.clipper_id, arr);
   }
   const infoByClipper = new Map<string, NonNullable<typeof infos>[number]>();
   for (const i of infos ?? []) infoByClipper.set(i.clipper_id, i);
@@ -72,13 +85,18 @@ export async function getTaxComplianceRows(
   for (const cl of clippers ?? []) {
     const info = infoByClipper.get(cl.id) ?? null;
     const earnedCents = earnedCentsInYear(clipsByClipper.get(cl.id) ?? [], year);
+    const paidCents = paidCentsInYear(payoutsByClipper.get(cl.id) ?? [], year);
     const status = computeTaxStatus(earnedCents, info, year);
-    if (!status.thresholdReached && !info) continue;
+    const paidThresholdReached = paidCents >= 60000;
+    // Include if: at threshold by either earnings or actual payments, or
+    // they already have an info row (someone started/completed the flow).
+    if (!status.thresholdReached && !paidThresholdReached && !info) continue;
     rows.push({
       clipperId: cl.id,
       xHandle: cl.x_handle,
       accountEmail: cl.email,
       earnedCents,
+      paidCents,
       state: status.cleared
         ? "cleared"
         : status.submitted
@@ -97,7 +115,11 @@ export async function getTaxComplianceRows(
     awaiting_clearance: 1,
     cleared: 2,
   };
-  rows.sort((a, b) => order[a.state] - order[b.state] || b.earnedCents - a.earnedCents);
+  rows.sort(
+    (a, b) =>
+      order[a.state] - order[b.state] ||
+      Math.max(b.earnedCents, b.paidCents) - Math.max(a.earnedCents, a.paidCents),
+  );
   return rows;
 }
 

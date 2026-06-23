@@ -66,6 +66,7 @@ export default async function AdminTaxPage() {
               <TH>handle</TH>
               <TH>status</TH>
               <TH>earned {year}</TH>
+              <TH>paid {year}</TH>
               <TH>legal name</TH>
               <TH>country</TH>
               <TH>send forms to</TH>
@@ -92,7 +93,16 @@ export default async function AdminTaxPage() {
                       {STATE_LABEL[r.state]}
                     </span>
                   </TD>
-                  <TD className="num">{fmtUsd((r.earnedCents / 100).toFixed(2))}</TD>
+                  <TD className={`num ${r.earnedCents >= 60000 ? "text-admin" : "text-text-2"}`}>
+                    <span title={r.earnedCents >= 60000 ? "≥ $600 by earnings" : undefined}>
+                      {fmtUsd((r.earnedCents / 100).toFixed(2))}
+                    </span>
+                  </TD>
+                  <TD className={`num ${r.paidCents >= 60000 ? "text-admin" : "text-text-2"}`}>
+                    <span title={r.paidCents >= 60000 ? "≥ $600 by actual payments" : undefined}>
+                      {fmtUsd((r.paidCents / 100).toFixed(2))}
+                    </span>
+                  </TD>
                   <TD className="font-mono text-xs text-text-2">{r.legalName ?? "—"}</TD>
                   <TD className="font-mono text-xs text-text-2">{r.country ?? "—"}</TD>
                   <TD className="font-mono text-xs">
@@ -107,7 +117,11 @@ export default async function AdminTaxPage() {
                   <TD className="font-mono text-xs text-text-2">{fmtDate(r.submittedAt)}</TD>
                   <TD className="font-mono text-xs text-text-2">{fmtDate(r.clearedAt)}</TD>
                   <TD>
-                    <TaxClearRowButton clipperId={r.clipperId} state={r.state} />
+                    <TaxClearRowButton
+                      clipperId={r.clipperId}
+                      handle={r.xHandle}
+                      state={r.state}
+                    />
                   </TD>
                 </TR>
               ))}
@@ -116,7 +130,7 @@ export default async function AdminTaxPage() {
                   <TD className="text-text-3 font-mono text-sm">
                     no clippers have reached the $600 threshold this year
                   </TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>
