@@ -40,10 +40,15 @@ export function TaxClearPanel({
   const submitted = info?.submitted_at != null;
   const cleared = info?.cleared_at != null;
 
-  async function act(path: string, method: "POST" | "DELETE") {
+  async function act(path: string, method: "POST" | "DELETE", body?: unknown) {
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/admin/clippers/${clipperId}/${path}`, { method });
+    const res = await fetch(`/api/admin/clippers/${clipperId}/${path}`, {
+      method,
+      ...(body
+        ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+        : {}),
+    });
     setBusy(false);
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -51,6 +56,32 @@ export function TaxClearPanel({
       return;
     }
     router.refresh();
+  }
+
+  // Admin-override: record off-platform tax info and mark cleared in one
+  // shot. Works whether or not the clipper has hit the $600 threshold —
+  // useful for pre-clearing someone you know you'll need to pay over the
+  // threshold soon.
+  async function recordAndClear() {
+    const first = window.prompt(
+      "Record + clear tax info (off-platform override).\n\nLegal first name:",
+      "",
+    );
+    if (!first || !first.trim()) return;
+    const last = window.prompt("Legal last name:", "");
+    if (!last || !last.trim()) return;
+    const country = window.prompt("Country (e.g. United States):", "");
+    if (!country || !country.trim()) return;
+    const email = window.prompt(
+      "Tax-forms email (leave blank to use the clipper's account email):",
+      "",
+    );
+    await act("tax-clear", "POST", {
+      legal_first_name: first.trim(),
+      legal_last_name: last.trim(),
+      country: country.trim(),
+      ...(email && email.trim() ? { email: email.trim() } : {}),
+    });
   }
 
   const accent = cleared ? "var(--accent)" : thresholdReached ? "var(--danger)" : "var(--border)";
@@ -84,9 +115,14 @@ export function TaxClearPanel({
               {busy ? "…" : "clear for payment"}
             </Button>
           ) : (
-            <Button variant="ghost" disabled={busy} onClick={() => act("tax-request", "POST")}>
-              {busy ? "…" : requested ? "re-send request" : "request tax info"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" disabled={busy} onClick={() => act("tax-request", "POST")}>
+                {busy ? "…" : requested ? "re-send request" : "request tax info"}
+              </Button>
+              <Button variant="primary" disabled={busy} onClick={recordAndClear}>
+                {busy ? "…" : "record + clear"}
+              </Button>
+            </div>
           )}
         </div>
 
