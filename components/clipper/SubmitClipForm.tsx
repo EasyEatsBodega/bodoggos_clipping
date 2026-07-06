@@ -4,18 +4,25 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 
+export type CreatorOption = { id: string; label: string };
+
 export function SubmitClipForm({
   campaignId,
   campaignName,
+  creators = [],
 }: {
   campaignId: string;
   campaignName: string;
+  creators?: CreatorOption[];
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
+  const [creatorTagId, setCreatorTagId] = useState("");
   const [state, setState] = useState<"idle" | "submitting">("idle");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  const needsCreator = creators.length > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +32,11 @@ export function SubmitClipForm({
     const res = await fetch("/api/clips", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, campaign_id: campaignId }),
+      body: JSON.stringify({
+        url,
+        campaign_id: campaignId,
+        ...(creatorTagId ? { creator_tag_id: creatorTagId } : {}),
+      }),
     });
     const json = await res.json();
     setState("idle");
@@ -35,6 +46,7 @@ export function SubmitClipForm({
     }
     setOk("Clip accepted. Tracking begins now.");
     setUrl("");
+    setCreatorTagId("");
     router.refresh();
   }
 
@@ -46,15 +58,37 @@ export function SubmitClipForm({
           paste an x.com / status / id link from your handle
         </span>
       </div>
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <input
           required
-          className="input-bare flex-1"
+          className="input-bare flex-1 min-w-[260px]"
           placeholder="https://x.com/yourhandle/status/1234567890"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <Button variant="primary" type="submit" disabled={state === "submitting" || !url}>
+        {needsCreator && (
+          <select
+            required
+            value={creatorTagId}
+            onChange={(e) => setCreatorTagId(e.target.value)}
+            className="input-bare font-mono text-sm bg-transparent border border-border px-3 py-2 min-w-[180px]"
+            aria-label="Whose stream is this clip from?"
+          >
+            <option value="" disabled>
+              whose stream?
+            </option>
+            {creators.map((c) => (
+              <option key={c.id} value={c.id} className="bg-bg text-text">
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={state === "submitting" || !url || (needsCreator && !creatorTagId)}
+        >
           {state === "submitting" ? "Verifying…" : "Submit"}
         </Button>
       </div>

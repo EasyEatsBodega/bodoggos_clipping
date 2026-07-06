@@ -52,7 +52,7 @@ export default async function ClipperCampaignDetailPage({
 
   const open = isCampaignOpen(campaign);
 
-  const [{ data: clips }, spent] = await Promise.all([
+  const [{ data: clips }, spent, { data: creatorTags }] = await Promise.all([
     supabase
       .from("clips")
       .select("*")
@@ -60,6 +60,14 @@ export default async function ClipperCampaignDetailPage({
       .eq("campaign_id", campaign.id)
       .order("submitted_at", { ascending: false }),
     getCampaignSpend(supabase, campaign.id),
+    // Creator tags are readable by any authenticated user; the submit form
+    // requires the clipper to say whose stream the clip came from.
+    supabase
+      .from("clip_tags")
+      .select("id, label")
+      .eq("kind", "creator")
+      .order("sort_order", { ascending: true })
+      .order("label", { ascending: true }),
   ]);
 
   const enrolled = !!enrollment;
@@ -182,7 +190,11 @@ export default async function ClipperCampaignDetailPage({
             </p>
           </div>
         ) : (
-          <SubmitClipForm campaignId={campaign.id} campaignName={campaign.name} />
+          <SubmitClipForm
+            campaignId={campaign.id}
+            campaignName={campaign.name}
+            creators={creatorTags ?? []}
+          />
         )}
 
         <section className="flex flex-col gap-3">
