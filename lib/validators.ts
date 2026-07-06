@@ -3,6 +3,9 @@ import { z } from "zod";
 export const submitClipSchema = z.object({
   url: z.string().min(1).max(500),
   campaign_id: z.string().uuid(),
+  // Which creator's stream the clip came from (clip_tags row of kind
+  // 'creator'). Enforced server-side whenever creator tags exist.
+  creator_tag_id: z.string().uuid().optional(),
 });
 
 export const banSchema = z.object({

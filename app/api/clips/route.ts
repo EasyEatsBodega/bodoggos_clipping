@@ -137,6 +137,25 @@ export async function POST(req: Request) {
     );
   }
 
+  // Creator attribution: when creator tags exist, the clipper must say whose
+  // stream the clip came from, and the value must be a real creator tag.
+  const { data: creatorTags } = await admin
+    .from("clip_tags")
+    .select("id")
+    .eq("kind", "creator");
+  const creatorTagIds = new Set((creatorTags ?? []).map((t) => t.id));
+  if (creatorTagIds.size > 0) {
+    if (!parsed.data.creator_tag_id) {
+      return NextResponse.json(
+        { error: "select whose stream this clip is from" },
+        { status: 400 },
+      );
+    }
+    if (!creatorTagIds.has(parsed.data.creator_tag_id)) {
+      return NextResponse.json({ error: "unknown creator" }, { status: 400 });
+    }
+  }
+
   const trackingUntil = new Date();
   trackingUntil.setUTCDate(trackingUntil.getUTCDate() + Number(campaign.tracking_days));
 
@@ -171,6 +190,20 @@ export async function POST(req: Request) {
     impressions: lookup.impressionCount ?? 0,
     source: "twitterapi_io",
   });
+
+  // Attach the creator tag the clipper picked. assigned_by stays null —
+  // it references admin_users and this attribution came from the clipper.
+  if (parsed.data.creator_tag_id && creatorTagIds.has(parsed.data.creator_tag_id)) {
+    const { error: tagErr } = await admin.from("clip_tag_assignments").insert({
+      clip_id: clip.id,
+      tag_id: parsed.data.creator_tag_id,
+    });
+    if (tagErr) {
+      // Clip is already accepted and tracking; a failed attribution write
+      // shouldn't fail the submission. Admin can still tag from /admin/clips.
+      console.error("[clips] creator tag assignment failed", tagErr);
+    }
+  }
 
   return NextResponse.json({ clip });
 }
