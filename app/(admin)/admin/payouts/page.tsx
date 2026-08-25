@@ -219,12 +219,21 @@ export default async function AdminPayoutsPage() {
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <h2 className="label">program totals</h2>
-            <Link
-              href={"/admin/payouts/review" as never}
-              className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
-            >
-              sanity review →
-            </Link>
+            <div className="flex items-baseline gap-4">
+              <a
+                href="/api/admin/payouts-export.csv"
+                className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
+                title="transaction-level ledger for accounting: date, recipient, legal name, amount, tx hash"
+              >
+                export payouts csv ↓
+              </a>
+              <Link
+                href={"/admin/payouts/review" as never}
+                className="font-mono text-[10px] uppercase tracking-widest text-admin hover:underline"
+              >
+                sanity review →
+              </Link>
+            </div>
           </div>
           <StatGrid>
             <StatCell label="spend (earned)" value={usd(totalEarnedCents)} accent="admin" />
