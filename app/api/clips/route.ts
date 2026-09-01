@@ -5,6 +5,7 @@ import { submitClipSchema } from "@/lib/validators";
 import { parseTweetUrl } from "@/lib/url-canonicalizer";
 import { getXProvider } from "@/lib/x-provider";
 import { getCampaignSpend, isCampaignOpen } from "@/lib/queries";
+import { weekStartET, weekEndET } from "@/lib/week";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -118,23 +119,28 @@ export async function POST(req: Request) {
   if (lookup.deleted) {
     return NextResponse.json({ error: "this tweet is unavailable or deleted" }, { status: 400 });
   }
-  const tweetAuthor = lookup.authorUsername.toLowerCase();
-  const primaryHandle = clipper.x_handle.toLowerCase();
-  let allowed = tweetAuthor === primaryHandle;
-  if (!allowed) {
-    const { data: altHandles } = await admin
-      .from("clipper_alt_handles")
-      .select("x_handle")
-      .eq("clipper_id", user.id);
-    allowed = (altHandles ?? []).some((h) => h.x_handle === tweetAuthor);
-  }
-  if (!allowed) {
-    return NextResponse.json(
-      {
-        error: `this post is from @${lookup.authorUsername} but your linked handle is @${clipper.x_handle}`,
-      },
-      { status: 400 },
-    );
+  // Ghostwriting campaigns accept posts published on any X account (the
+  // clipper writes, someone else posts) — everyone else must submit from
+  // their linked or alt handle.
+  if (!campaign.allow_external_authors) {
+    const tweetAuthor = lookup.authorUsername.toLowerCase();
+    const primaryHandle = clipper.x_handle.toLowerCase();
+    let allowed = tweetAuthor === primaryHandle;
+    if (!allowed) {
+      const { data: altHandles } = await admin
+        .from("clipper_alt_handles")
+        .select("x_handle")
+        .eq("clipper_id", user.id);
+      allowed = (altHandles ?? []).some((h) => h.x_handle === tweetAuthor);
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          error: `this post is from @${lookup.authorUsername} but your linked handle is @${clipper.x_handle}`,
+        },
+        { status: 400 },
+      );
+    }
   }
 
   // Creator attribution: when creator tags exist, the clipper must say whose
@@ -161,7 +167,32 @@ export async function POST(req: Request) {
 
   const effectiveCpm = clipper.cpm_rate_override ?? campaign.cpm_rate;
   const effectiveMax = clipper.max_payout_override ?? campaign.max_payout_per_clip;
-  const effectiveFlat = clipper.flat_fee_per_clip ?? 0;
+  let effectiveFlat: number | string = clipper.flat_fee_per_clip ?? 0;
+  if (campaign.weekly_base_pay_usd != null) {
+    // Weekly-base campaign: the flat weekly base replaces per-clip flat
+    // fees. It rides as the flat_fee_snapshot on the FIRST counting clip
+    // the clipper submits this ET week (Mon–Sun), so all downstream
+    // accounting (finalize, rolling owed, tax, budget) picks it up with no
+    // special cases. Later clips the same week snapshot 0. If the carrier
+    // clip is later rejected or marked botting, that week's base goes with
+    // it — admins can compensate via a manual payout note.
+    const { count: weekClipCount, error: weekErr } = await admin
+      .from("clips")
+      .select("id", { count: "exact", head: true })
+      .eq("clipper_id", user.id)
+      .eq("campaign_id", campaign.id)
+      .neq("status", "rejected")
+      .gte("submitted_at", weekStartET().toISOString())
+      .lt("submitted_at", weekEndET().toISOString());
+    if (weekErr) {
+      console.error("[clips] weekly base carrier check failed", weekErr);
+      return NextResponse.json(
+        { error: "could not verify weekly base pay, try again" },
+        { status: 500 },
+      );
+    }
+    effectiveFlat = (weekClipCount ?? 0) === 0 ? Number(campaign.weekly_base_pay_usd) : 0;
+  }
 
   const { data: clip, error: insertErr } = await admin
     .from("clips")

@@ -198,6 +198,76 @@ describe("computeRollingOwedCents", () => {
   });
 });
 
+// Weekly-base (ghostwriting) campaigns ride the flat weekly amount as the
+// flat_fee_snapshot on the first counting clip of the ET week; other clips
+// that week snapshot 0. cpm 0 = impressions tracked but not paid.
+describe("weekly base pay riding on flat_fee_snapshot", () => {
+  it("cpm 0: carrier clip pays exactly the base at any impression count", () => {
+    expect(computePayoutCents(0, 0, 0, 300)).toBe(30000);
+    expect(computePayoutCents(2_000_000, 0, 0, 300)).toBe(30000);
+    expect(computePayoutAmount(500_000, "0.00", "0.00", "300.00")).toBe("300.00");
+  });
+
+  it("cpm 0: non-carrier clips the same week pay nothing", () => {
+    expect(computePayoutCents(500_000, 0, 0, 0)).toBe(0);
+  });
+
+  it("base + cpm bonus: bonus adds on top, capped per clip", () => {
+    // $300 base + $1 CPM capped at $50: 20k views → $300 + $20.
+    expect(computePayoutCents(20_000, 1, 50, 300)).toBe(32000);
+    // 1M views → bonus capped: $300 + $50.
+    expect(computePayoutCents(1_000_000, 1, 50, 300)).toBe(35000);
+  });
+
+  it("rolling owed pays the base once, then only cpm growth", () => {
+    const carrier = {
+      id: "wk1",
+      status: "tracking" as const,
+      impressions: 10_000,
+      final_impressions: null,
+      cpm_rate_snapshot: "1",
+      max_payout_snapshot: "50",
+      flat_fee_snapshot: "300" as string | null,
+    };
+    // First payout sweeps base + cpm: $300 + $10.
+    expect(computeRollingOwedCents([carrier], new Map())).toBe(31000);
+    // Marked at 10k, grows to 30k → only $20 more; base not re-owed.
+    const grown = [{ ...carrier, impressions: 30_000 }];
+    expect(computeRollingOwedCents(grown, new Map([["wk1", 10_000]]))).toBe(2000);
+  });
+
+  it("two weeks = two carrier clips, each owing its own base", () => {
+    const mkWeek = (id: string) => ({
+      id,
+      status: "completed" as const,
+      impressions: 0,
+      final_impressions: 5000,
+      cpm_rate_snapshot: "0",
+      max_payout_snapshot: "0",
+      flat_fee_snapshot: "300" as string | null,
+    });
+    const clips = [mkWeek("wk1"), mkWeek("wk2")];
+    // Week 1 already paid (mark exists at any impression count) → only week
+    // 2's base is owed.
+    expect(computeRollingOwedCents(clips, new Map([["wk1", 5000]]))).toBe(30000);
+    expect(computeRollingOwedCents(clips, new Map())).toBe(60000);
+  });
+
+  it("a botting-marked carrier forfeits the week's base", () => {
+    const carrier = {
+      id: "wk1",
+      status: "tracking" as const,
+      impressions: 10_000,
+      final_impressions: null,
+      cpm_rate_snapshot: "0",
+      max_payout_snapshot: "0",
+      flat_fee_snapshot: "300" as string | null,
+      botting_suspected: true,
+    };
+    expect(computeRollingOwedCents([carrier], new Map())).toBe(0);
+  });
+});
+
 describe("latestMarksByClipId", () => {
   it("keeps the highest watermark per clip", () => {
     const result = latestMarksByClipId([

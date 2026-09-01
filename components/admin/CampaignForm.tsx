@@ -31,10 +31,14 @@ export function CampaignForm(props: Props) {
     name: c?.name ?? "",
     description: c?.description ?? "",
     brief_url: c?.brief_url ?? "",
+    pay_structure:
+      c?.weekly_base_pay_usd != null ? ("weekly_base" as const) : ("per_clip" as const),
+    weekly_base_pay_usd: c?.weekly_base_pay_usd != null ? Number(c.weekly_base_pay_usd) : "",
     cpm_rate: c ? Number(c.cpm_rate) : 4,
     max_payout_per_clip: c ? Number(c.max_payout_per_clip) : 75,
     tracking_days: c?.tracking_days ?? 7,
     min_views: c?.min_views != null ? Number(c.min_views) : "",
+    allow_external_authors: c?.allow_external_authors ?? false,
     active: c?.active ?? false,
     starts_at: toLocalInput(c?.starts_at ?? null),
     ends_at: toLocalInput(c?.ends_at ?? null),
@@ -50,12 +54,19 @@ export function CampaignForm(props: Props) {
     setError(null);
     setOk(false);
 
+    const weekly = form.pay_structure === "weekly_base";
     const payload: Record<string, unknown> = {
       name: form.name,
       cpm_rate: Number(form.cpm_rate),
       max_payout_per_clip: Number(form.max_payout_per_clip),
       tracking_days: Number(form.tracking_days),
-      min_views: form.min_views === "" ? null : Number(form.min_views),
+      // The min-views floor also gates the flat fee on the clip carrying the
+      // weekly base, which would silently forfeit the retainer — so weekly-
+      // base campaigns never set one.
+      min_views: weekly || form.min_views === "" ? null : Number(form.min_views),
+      weekly_base_pay_usd:
+        weekly && form.weekly_base_pay_usd !== "" ? Number(form.weekly_base_pay_usd) : null,
+      allow_external_authors: form.allow_external_authors,
       active: form.active,
       description: form.description ? form.description : null,
       brief_url: form.brief_url ? form.brief_url : null,
@@ -131,24 +142,85 @@ export function CampaignForm(props: Props) {
         value={form.brief_url}
         onChange={(e) => setForm({ ...form, brief_url: e.target.value })}
       />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="label">pay structure</legend>
+        <div className="flex flex-col gap-1 font-mono text-xs">
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              name="pay_structure"
+              className="mt-[2px]"
+              checked={form.pay_structure === "per_clip"}
+              onChange={() => setForm({ ...form, pay_structure: "per_clip" })}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span>per clip (cpm)</span>
+              <span className="text-text-3">each clip earns cpm × views, capped per clip</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              name="pay_structure"
+              className="mt-[2px]"
+              checked={form.pay_structure === "weekly_base"}
+              onChange={() => setForm({ ...form, pay_structure: "weekly_base" })}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span>flat weekly base pay</span>
+              <span className="text-text-3">
+                a flat usd amount per week — paid with the first counting post each week
+                (mon–sun ET). impressions are still tracked; set cpm &gt; 0 to add a
+                per-view bonus on top, or 0 for base pay only. per-clipper per-clip flat
+                fees don&apos;t apply in this mode.
+              </span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
       <div className="grid grid-cols-2 gap-4">
+        {form.pay_structure === "weekly_base" && (
+          <Input
+            id="weekly_base"
+            label="weekly base pay (usd / week)"
+            required
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={form.weekly_base_pay_usd}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                weekly_base_pay_usd: e.target.value === "" ? "" : Number(e.target.value),
+              })
+            }
+          />
+        )}
         <Input
           id="cpm"
-          label="cpm (usd / 1k)"
+          label={
+            form.pay_structure === "weekly_base"
+              ? "cpm bonus (usd / 1k, 0 = none)"
+              : "cpm (usd / 1k)"
+          }
           required
           type="number"
           step="0.01"
-          min="0.01"
+          min={form.pay_structure === "weekly_base" ? "0" : "0.01"}
           value={form.cpm_rate}
           onChange={(e) => setForm({ ...form, cpm_rate: Number(e.target.value) })}
         />
         <Input
           id="cap"
-          label="max payout / clip (usd)"
+          label={
+            form.pay_structure === "weekly_base"
+              ? "cpm bonus cap / clip (usd)"
+              : "max payout / clip (usd)"
+          }
           required
           type="number"
           step="0.01"
-          min="0.01"
+          min="0"
           value={form.max_payout_per_clip}
           onChange={(e) =>
             setForm({ ...form, max_payout_per_clip: Number(e.target.value) })
@@ -178,20 +250,22 @@ export function CampaignForm(props: Props) {
             })
           }
         />
-        <Input
-          id="min_views"
-          label="min views to earn (blank = no floor)"
-          type="number"
-          step="1"
-          min="0"
-          value={form.min_views}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              min_views: e.target.value === "" ? "" : Number(e.target.value),
-            })
-          }
-        />
+        {form.pay_structure === "per_clip" && (
+          <Input
+            id="min_views"
+            label="min views to earn (blank = no floor)"
+            type="number"
+            step="1"
+            min="0"
+            value={form.min_views}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                min_views: e.target.value === "" ? "" : Number(e.target.value),
+              })
+            }
+          />
+        )}
         <Input
           id="starts_at"
           label="starts at (local time, blank = now)"
@@ -207,6 +281,21 @@ export function CampaignForm(props: Props) {
           onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
         />
       </div>
+      <label className="flex items-start gap-2 font-mono text-xs">
+        <input
+          type="checkbox"
+          className="mt-[2px]"
+          checked={form.allow_external_authors}
+          onChange={(e) => setForm({ ...form, allow_external_authors: e.target.checked })}
+        />
+        <span className="flex flex-col gap-0.5">
+          <span>ghostwriting — allow posts from other X accounts</span>
+          <span className="text-text-3">
+            clippers can submit posts published on any X account, not just their linked
+            handle (e.g. posts they wrote that went out on someone else&apos;s account)
+          </span>
+        </span>
+      </label>
       <label className="flex items-start gap-2 font-mono text-xs">
         <input
           type="checkbox"

@@ -162,10 +162,12 @@ export const campaignSlugSchema = z
   .max(60)
   .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits, dashes only");
 
-export const campaignConfigSchema = z.object({
+const campaignConfigBase = z.object({
   name: z.string().min(1).max(100),
-  cpm_rate: z.number().positive(),
-  max_payout_per_clip: z.number().positive(),
+  // cpm 0 is allowed so weekly-base campaigns can track impressions
+  // without paying per-view (base pay only).
+  cpm_rate: z.number().nonnegative().max(1000),
+  max_payout_per_clip: z.number().nonnegative().max(100_000),
   tracking_days: z.number().int().min(1).max(90),
   min_views: z.number().int().nonnegative().max(1_000_000_000).nullable().optional(),
   active: z.boolean(),
@@ -174,8 +176,23 @@ export const campaignConfigSchema = z.object({
   starts_at: isoDateString.nullable().optional(),
   ends_at: isoDateString.nullable().optional(),
   budget_usd: z.number().positive().max(10_000_000).nullable().optional(),
+  weekly_base_pay_usd: z.number().positive().max(100_000).nullable().optional(),
+  allow_external_authors: z.boolean().optional(),
 });
 
-export const createCampaignSchema = campaignConfigSchema.extend({
-  slug: campaignSlugSchema,
-});
+// A per-clip campaign with no weekly base needs a real cpm rate, otherwise
+// it would silently pay nothing.
+const requiresSomePay = {
+  check: (d: { weekly_base_pay_usd?: number | null; cpm_rate: number }) =>
+    d.weekly_base_pay_usd != null || d.cpm_rate > 0,
+  opts: { message: "set a cpm rate or a weekly base pay", path: ["cpm_rate"] },
+};
+
+export const campaignConfigSchema = campaignConfigBase.refine(
+  requiresSomePay.check,
+  requiresSomePay.opts,
+);
+
+export const createCampaignSchema = campaignConfigBase
+  .extend({ slug: campaignSlugSchema })
+  .refine(requiresSomePay.check, requiresSomePay.opts);

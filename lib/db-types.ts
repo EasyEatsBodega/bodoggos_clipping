@@ -85,6 +85,13 @@ export type Campaign = {
   starts_at: string | null;
   ends_at: string | null;
   budget_usd: string | null;
+  // Flat weekly base pay (ghostwriting-style deals). When set, the first
+  // counting clip a clipper submits each ET week carries it as its
+  // flat_fee_snapshot; per-clipper flat_fee_per_clip does not apply.
+  weekly_base_pay_usd: string | null;
+  // Allow submitting posts authored by a different X account than the
+  // clipper's linked/alt handles (ghostwriting).
+  allow_external_authors: boolean;
 };
 
 export type CampaignEnrollment = {

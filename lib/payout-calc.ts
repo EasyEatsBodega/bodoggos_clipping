@@ -5,6 +5,13 @@
 // cap. This matches per-clipper deals like "$25/clip + $2 CPM cap $50":
 // a 0-impression clip pays $25; a million-impression clip pays $25 + $50.
 //
+// Weekly-base campaigns (campaigns.weekly_base_pay_usd) reuse the same
+// field: the clip-submit route snapshots the campaign's weekly base as the
+// flat fee on the FIRST counting clip of each ET week (0 on the rest), so
+// the base flows through finalize / owed / tax / budget with no special
+// cases here. A cpm rate of 0 in those campaigns means impressions are
+// tracked but earn nothing on top of the base.
+//
 // minViews is a per-campaign eligibility floor: a clip below it earns
 // nothing at all (not even the flat fee) until it crosses the threshold.
 // Once eligible, CPM applies from the first view — the floor is a gate,

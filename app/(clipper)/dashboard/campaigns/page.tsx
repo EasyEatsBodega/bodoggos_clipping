@@ -83,14 +83,32 @@ export default async function ClipperCampaignsPage() {
                     <p className="font-mono text-xs text-text-2 line-clamp-3">{c.description}</p>
                   )}
                   <div className="grid grid-cols-3 gap-3 font-mono text-[11px] text-text-2">
-                    <div>
-                      <div className="text-text-3 text-[10px] uppercase tracking-widest">cpm</div>
-                      <div>{fmtUsd(c.cpm_rate)}</div>
-                    </div>
-                    <div>
-                      <div className="text-text-3 text-[10px] uppercase tracking-widest">cap</div>
-                      <div>{fmtUsd(c.max_payout_per_clip)}</div>
-                    </div>
+                    {c.weekly_base_pay_usd != null ? (
+                      <div>
+                        <div className="text-text-3 text-[10px] uppercase tracking-widest">
+                          base /wk
+                        </div>
+                        <div>{fmtUsd(c.weekly_base_pay_usd)}</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-text-3 text-[10px] uppercase tracking-widest">cpm</div>
+                        <div>{fmtUsd(c.cpm_rate)}</div>
+                      </div>
+                    )}
+                    {c.weekly_base_pay_usd != null ? (
+                      <div>
+                        <div className="text-text-3 text-[10px] uppercase tracking-widest">
+                          cpm bonus
+                        </div>
+                        <div>{Number(c.cpm_rate) > 0 ? fmtUsd(c.cpm_rate) : "—"}</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-text-3 text-[10px] uppercase tracking-widest">cap</div>
+                        <div>{fmtUsd(c.max_payout_per_clip)}</div>
+                      </div>
+                    )}
                     <div>
                       <div className="text-text-3 text-[10px] uppercase tracking-widest">
                         budget

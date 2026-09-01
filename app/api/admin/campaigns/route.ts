@@ -27,6 +27,11 @@ export async function POST(req: Request) {
       starts_at: parsed.data.starts_at ?? null,
       ends_at: parsed.data.ends_at ?? null,
       budget_usd: parsed.data.budget_usd != null ? parsed.data.budget_usd.toFixed(2) : null,
+      weekly_base_pay_usd:
+        parsed.data.weekly_base_pay_usd != null
+          ? parsed.data.weekly_base_pay_usd.toFixed(2)
+          : null,
+      allow_external_authors: parsed.data.allow_external_authors ?? false,
     })
     .select()
     .single();
