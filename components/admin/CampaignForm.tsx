@@ -21,6 +21,19 @@ function fromLocalInput(local: string): string | null {
   return new Date(local).toISOString();
 }
 
+// Slugs must match /^[a-z0-9][a-z0-9-]*$/ server-side. Sanitize while typing
+// (lowercase, spaces → dashes, drop everything else) so pasting a campaign
+// name like "BoDoggos Writer Campaign" just works instead of 400ing.
+function sanitizeSlugInput(v: string): string {
+  return v.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+}
+
+// Final cleanup at submit: collapse runs of dashes and trim the ends (a
+// trailing dash is allowed while typing so "foo-bar" can be entered).
+function finalizeSlug(v: string): string {
+  return v.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 export function CampaignForm(props: Props) {
   const router = useRouter();
   const editing = props.mode === "edit";
@@ -74,7 +87,7 @@ export function CampaignForm(props: Props) {
       ends_at: fromLocalInput(form.ends_at),
       budget_usd: form.budget_usd === "" ? null : Number(form.budget_usd),
     };
-    if (!editing) payload.slug = form.slug;
+    if (!editing) payload.slug = finalizeSlug(form.slug);
 
     const res = await fetch(
       editing ? `/api/admin/campaigns/${c!.id}` : "/api/admin/campaigns",
@@ -106,11 +119,11 @@ export function CampaignForm(props: Props) {
       {!editing && (
         <Input
           id="slug"
-          label="slug (url-safe, immutable)"
+          label="slug (lowercase-dashes, immutable)"
           required
           placeholder="brand-name-q1"
           value={form.slug}
-          onChange={(e) => setForm({ ...form, slug: e.target.value })}
+          onChange={(e) => setForm({ ...form, slug: sanitizeSlugInput(e.target.value) })}
         />
       )}
       {editing && (
