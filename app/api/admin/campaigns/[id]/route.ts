@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { campaignConfigSchema } from "@/lib/validators";
+import { campaignConfigSchema, zodErrorSummary } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
 
 export async function PATCH(
@@ -13,7 +13,7 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   const parsed = campaignConfigSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    return NextResponse.json({ error: zodErrorSummary(parsed.error) }, { status: 400 });
   }
 
   const { error } = await auth.admin

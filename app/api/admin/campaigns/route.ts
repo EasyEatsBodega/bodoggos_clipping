@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createCampaignSchema } from "@/lib/validators";
+import { createCampaignSchema, zodErrorSummary } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
 
 export async function POST(req: Request) {
@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const parsed = createCampaignSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    return NextResponse.json({ error: zodErrorSummary(parsed.error) }, { status: 400 });
   }
 
   const { data, error } = await auth.admin

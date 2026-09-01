@@ -1,4 +1,15 @@
 import { z } from "zod";
+import type { ZodError } from "zod";
+
+// First validation issue as a human-readable "field: message" string, so
+// admin forms can say exactly what's wrong instead of a bare "invalid
+// request" (e.g. `slug: lowercase letters, digits, dashes only`).
+export function zodErrorSummary(err: ZodError): string {
+  const issue = err.issues[0];
+  if (!issue) return "invalid request";
+  const path = issue.path.join(".");
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
 
 export const submitClipSchema = z.object({
   url: z.string().min(1).max(500),
