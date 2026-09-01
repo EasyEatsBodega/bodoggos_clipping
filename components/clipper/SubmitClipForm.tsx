@@ -10,10 +10,12 @@ export function SubmitClipForm({
   campaignId,
   campaignName,
   creators = [],
+  allowExternalAuthors = false,
 }: {
   campaignId: string;
   campaignName: string;
   creators?: CreatorOption[];
+  allowExternalAuthors?: boolean;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -55,14 +57,20 @@ export function SubmitClipForm({
       <div className="flex items-baseline justify-between">
         <span className="label">submit clip · {campaignName}</span>
         <span className="font-mono text-[10px] text-text-3">
-          paste an x.com / status / id link from your handle
+          {allowExternalAuthors
+            ? "paste an x.com / status / id link — any account"
+            : "paste an x.com / status / id link from your handle"}
         </span>
       </div>
       <div className="flex flex-wrap gap-3">
         <input
           required
           className="input-bare flex-1 min-w-[260px]"
-          placeholder="https://x.com/yourhandle/status/1234567890"
+          placeholder={
+            allowExternalAuthors
+              ? "https://x.com/anyaccount/status/1234567890"
+              : "https://x.com/yourhandle/status/1234567890"
+          }
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />

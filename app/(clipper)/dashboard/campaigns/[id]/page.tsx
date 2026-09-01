@@ -115,14 +115,28 @@ export default async function ClipperCampaignDetailPage({
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border border-border p-4 font-mono text-xs">
+            {campaign.weekly_base_pay_usd != null && (
+              <div>
+                <div className="text-text-3 text-[10px] uppercase tracking-widest">
+                  base pay
+                </div>
+                <div>{fmtUsd(campaign.weekly_base_pay_usd)} / week</div>
+              </div>
+            )}
             <div>
-              <div className="text-text-3 text-[10px] uppercase tracking-widest">cpm</div>
-              <div>{fmtUsd(campaign.cpm_rate)} / 1k</div>
+              <div className="text-text-3 text-[10px] uppercase tracking-widest">
+                {campaign.weekly_base_pay_usd != null ? "cpm bonus" : "cpm"}
+              </div>
+              <div>
+                {Number(campaign.cpm_rate) > 0 ? `${fmtUsd(campaign.cpm_rate)} / 1k` : "—"}
+              </div>
             </div>
-            <div>
-              <div className="text-text-3 text-[10px] uppercase tracking-widest">cap / clip</div>
-              <div>{fmtUsd(campaign.max_payout_per_clip)}</div>
-            </div>
+            {Number(campaign.cpm_rate) > 0 && (
+              <div>
+                <div className="text-text-3 text-[10px] uppercase tracking-widest">cap / clip</div>
+                <div>{fmtUsd(campaign.max_payout_per_clip)}</div>
+              </div>
+            )}
             <div>
               <div className="text-text-3 text-[10px] uppercase tracking-widest">tracking</div>
               <div>{campaign.tracking_days} days</div>
@@ -147,6 +161,28 @@ export default async function ClipperCampaignDetailPage({
               </div>
             )}
           </div>
+
+          {(campaign.weekly_base_pay_usd != null || campaign.allow_external_authors) && (
+            <div className="font-mono text-[11px] text-text-2 flex flex-col gap-1 max-w-2xl">
+              {campaign.weekly_base_pay_usd != null && (
+                <p>
+                  <span className="text-accent">// weekly base —</span> your first counting
+                  post each week (Mon–Sun ET) locks in{" "}
+                  {fmtUsd(campaign.weekly_base_pay_usd)}. Impressions are still tracked on
+                  every post
+                  {Number(campaign.cpm_rate) > 0
+                    ? ", and the cpm bonus pays on top."
+                    : "."}
+                </p>
+              )}
+              {campaign.allow_external_authors && (
+                <p>
+                  <span className="text-accent">// ghostwriting —</span> you can submit
+                  posts published on any X account, not just your linked handle.
+                </p>
+              )}
+            </div>
+          )}
 
           {(campaign.starts_at || campaign.ends_at) && (
             <div className="font-mono text-[11px] text-text-3">
@@ -194,6 +230,7 @@ export default async function ClipperCampaignDetailPage({
             campaignId={campaign.id}
             campaignName={campaign.name}
             creators={creatorTags ?? []}
+            allowExternalAuthors={campaign.allow_external_authors}
           />
         )}
 

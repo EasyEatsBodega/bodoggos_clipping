@@ -69,6 +69,7 @@ export default async function AdminCampaignsPage() {
                 <tr className="border-b border-border text-text-3 text-[10px] uppercase tracking-widest">
                   <th className="text-left p-3">name</th>
                   <th className="text-left p-3">status</th>
+                  <th className="text-right p-3">base /wk</th>
                   <th className="text-right p-3">cpm</th>
                   <th className="text-right p-3">cap</th>
                   <th className="text-right p-3">min views</th>
@@ -105,8 +106,15 @@ export default async function AdminCampaignsPage() {
                           {open ? "live" : c.active ? "scheduled" : "draft"}
                         </span>
                       </td>
-                      <td className="p-3 text-right">{fmtUsd(c.cpm_rate)}</td>
-                      <td className="p-3 text-right">{fmtUsd(c.max_payout_per_clip)}</td>
+                      <td className="p-3 text-right">
+                        {c.weekly_base_pay_usd != null ? fmtUsd(c.weekly_base_pay_usd) : "—"}
+                      </td>
+                      <td className="p-3 text-right">
+                        {Number(c.cpm_rate) > 0 ? fmtUsd(c.cpm_rate) : "—"}
+                      </td>
+                      <td className="p-3 text-right">
+                        {Number(c.cpm_rate) > 0 ? fmtUsd(c.max_payout_per_clip) : "—"}
+                      </td>
                       <td className="p-3 text-right">
                         {c.min_views != null && c.min_views > 0
                           ? c.min_views.toLocaleString()
