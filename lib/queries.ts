@@ -269,8 +269,10 @@ export async function getClipperKpis(
 
 // Snapshots the current billable impression count for every non-rejected
 // clip belonging to a clipper as a payout_clip_marks row attached to the
-// just-inserted payout. The next "rolling owed" calc will only count
-// impressions above these watermarks. Errors are swallowed (logged) — the
+// just-inserted payout, together with the flat fee on the clip at that
+// moment (so a flat amount added later — a sponsored bonus — still shows
+// as owed). The next "rolling owed" calc will only count impressions above
+// these watermarks. Errors are swallowed (logged) — the
 // payment is the source of truth, marks are an accounting refinement; if
 // they fail the next payout will overpay slightly rather than block a
 // confirmed transfer from being recorded.
@@ -281,7 +283,7 @@ export async function snapshotClipMarks(
 ): Promise<void> {
   const { data: clips, error } = await supabase
     .from("clips")
-    .select("id, status, impressions, final_impressions")
+    .select("id, status, impressions, final_impressions, flat_fee_snapshot")
     .eq("clipper_id", clipperId)
     .neq("status", "rejected");
   if (error || !clips) {
@@ -293,6 +295,7 @@ export async function snapshotClipMarks(
   const rows = clips.map((c) => ({
     payout_id: payoutId,
     clip_id: c.id,
+    flat_fee_at_mark: c.flat_fee_snapshot ?? "0",
     impressions_at_mark: billableImpressions({
       id: c.id,
       status: c.status,

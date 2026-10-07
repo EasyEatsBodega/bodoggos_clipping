@@ -208,6 +208,12 @@ export async function POST(req: Request) {
     }
     effectiveFlat = (weekClipCount ?? 0) === 0 ? Number(campaign.weekly_base_pay_usd) : 0;
   }
+  // The sponsored bonus (campaign setting, default $25) rides in the flat
+  // fee too, so finalize / owed / tax / budget count it with no special
+  // cases; sponsored_bonus_snapshot records the component so untagging
+  // later removes exactly this amount (see lib/sponsored.ts).
+  const sponsoredBonus = sponsoredTagId ? Number(campaign.sponsored_bonus_usd ?? 0) : 0;
+  const flatSnapshot = (Number(effectiveFlat) + sponsoredBonus).toFixed(2);
 
   const { data: clip, error: insertErr } = await admin
     .from("clips")
@@ -220,7 +226,8 @@ export async function POST(req: Request) {
       impressions: lookup.impressionCount ?? 0,
       cpm_rate_snapshot: effectiveCpm,
       max_payout_snapshot: effectiveMax,
-      flat_fee_snapshot: effectiveFlat,
+      flat_fee_snapshot: flatSnapshot,
+      sponsored_bonus_snapshot: sponsoredBonus.toFixed(2),
       min_views_snapshot: campaign.min_views ?? null,
       x_author_id: lookup.authorId || null,
     })

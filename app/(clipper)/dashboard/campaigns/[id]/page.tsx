@@ -153,6 +153,14 @@ export default async function ClipperCampaignDetailPage({
                 <div>{fmtUsd(campaign.max_payout_per_clip)}</div>
               </div>
             )}
+            {sponsoredTag && Number(campaign.sponsored_bonus_usd ?? 0) > 0 && (
+              <div>
+                <div className="text-text-3 text-[10px] uppercase tracking-widest">
+                  sponsored bonus
+                </div>
+                <div>+{fmtUsd(campaign.sponsored_bonus_usd)} / post</div>
+              </div>
+            )}
             <div>
               <div className="text-text-3 text-[10px] uppercase tracking-widest">tracking</div>
               <div>{campaign.tracking_days} days</div>
@@ -248,6 +256,7 @@ export default async function ClipperCampaignDetailPage({
             creators={creatorTags ?? []}
             allowExternalAuthors={campaign.allow_external_authors}
             canMarkSponsored={!!sponsoredTag}
+            sponsoredBonusUsd={Number(campaign.sponsored_bonus_usd ?? 0)}
           />
         )}
 

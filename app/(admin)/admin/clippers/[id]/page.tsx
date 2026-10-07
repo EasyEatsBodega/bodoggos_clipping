@@ -85,9 +85,16 @@ export default async function AdminClipperDetailPage({
   const { data: clipMarks } = clipIdsForMarks.length
     ? await admin
         .from("payout_clip_marks")
-        .select("clip_id, impressions_at_mark")
+        .select("clip_id, impressions_at_mark, flat_fee_at_mark, created_at")
         .in("clip_id", clipIdsForMarks)
-    : { data: [] as Array<{ clip_id: string; impressions_at_mark: number }> };
+    : {
+        data: [] as Array<{
+          clip_id: string;
+          impressions_at_mark: number;
+          flat_fee_at_mark: string | null;
+          created_at: string;
+        }>,
+      };
   const marksMap = latestMarksByClipId(clipMarks ?? []);
 
   const clipIds = (clips ?? []).map((c) => c.id);

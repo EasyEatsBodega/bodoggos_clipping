@@ -276,8 +276,76 @@ describe("latestMarksByClipId", () => {
       { clip_id: "c1", impressions_at_mark: 2000 },
       { clip_id: "c2", impressions_at_mark: 500 },
     ]);
-    expect(result.get("c1")).toBe(3000);
-    expect(result.get("c2")).toBe(500);
+    expect(result.get("c1")).toEqual({ impressions: 3000, flatFee: null });
+    expect(result.get("c2")).toEqual({ impressions: 500, flatFee: null });
+  });
+
+  it("on equal impressions the most recent mark wins (it settled the later flat)", () => {
+    const result = latestMarksByClipId([
+      { clip_id: "c1", impressions_at_mark: 5000, flat_fee_at_mark: "0.00", created_at: "2026-01-01T00:00:00Z" },
+      { clip_id: "c1", impressions_at_mark: 5000, flat_fee_at_mark: "25.00", created_at: "2026-02-01T00:00:00Z" },
+    ]);
+    expect(result.get("c1")).toEqual({ impressions: 5000, flatFee: 25 });
+  });
+
+  it("a later 0-impression mark (botting hold) does not reopen paid views", () => {
+    const result = latestMarksByClipId([
+      { clip_id: "c1", impressions_at_mark: 5000, flat_fee_at_mark: "25", created_at: "2026-01-01T00:00:00Z" },
+      { clip_id: "c1", impressions_at_mark: 0, flat_fee_at_mark: "25", created_at: "2026-02-01T00:00:00Z" },
+    ]);
+    expect(result.get("c1")).toEqual({ impressions: 5000, flatFee: 25 });
+  });
+});
+
+// The sponsored bonus is folded into flat_fee_snapshot when a clip is
+// tagged. Marks taken after migration 0026 record the flat paid, so a bonus
+// added after payday is still owed; legacy marks keep the old behaviour.
+describe("flat fee added after a payout (sponsored bonus)", () => {
+  const paidClip = {
+    id: "c1",
+    status: "completed" as const,
+    impressions: 0,
+    final_impressions: 5000,
+    cpm_rate_snapshot: "4",
+    max_payout_snapshot: "75",
+    flat_fee_snapshot: "25" as string | null, // tagged sponsored after payout
+    min_views_snapshot: null,
+  };
+
+  it("legacy mark (no flat recorded) treats the current flat as already paid", () => {
+    expect(computeRollingOwedCents([paidClip], new Map([["c1", 5000]]))).toBe(0);
+  });
+
+  it("a mark that recorded flat 0 owes the $25 added since", () => {
+    expect(
+      computeRollingOwedCents([paidClip], new Map([["c1", { impressions: 5000, flatFee: 0 }]])),
+    ).toBe(2500);
+  });
+
+  it("bonus removed after it was paid never goes negative", () => {
+    const untagged = { ...paidClip, flat_fee_snapshot: "0" };
+    expect(
+      computeRollingOwedCents([untagged], new Map([["c1", { impressions: 5000, flatFee: 25 }]])),
+    ).toBe(0);
+  });
+
+  it("cpm growth and a newly added bonus stack", () => {
+    const tracking = {
+      ...paidClip,
+      status: "tracking" as const,
+      impressions: 10_000,
+      final_impressions: null,
+    };
+    // at mark: 5000 views → $20 cpm, flat 0. now: $40 cpm + $25 → $45 owed.
+    expect(
+      computeRollingOwedCents([tracking], new Map([["c1", { impressions: 5000, flatFee: 0 }]])),
+    ).toBe(4500);
+  });
+
+  it("a mark that already settled the bonus owes nothing more for it", () => {
+    expect(
+      computeRollingOwedCents([paidClip], new Map([["c1", { impressions: 5000, flatFee: 25 }]])),
+    ).toBe(0);
   });
 });
 

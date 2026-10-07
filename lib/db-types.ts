@@ -36,6 +36,8 @@ export type Clip = {
   max_payout_snapshot: string;
   flat_fee_snapshot: string;
   min_views_snapshot: number | null;
+  // Portion of flat_fee_snapshot that is the sponsored bonus (0 if untagged).
+  sponsored_bonus_snapshot: string;
   x_author_id: string | null;
   botting_suspected: boolean;
   botting_reason: string | null;
@@ -67,6 +69,9 @@ export type PayoutClipMark = {
   payout_id: string;
   clip_id: string;
   impressions_at_mark: number;
+  // Flat amount the ledger considered paid at this mark; null on marks
+  // taken before migration 0026.
+  flat_fee_at_mark: string | null;
   created_at: string;
 };
 
@@ -89,6 +94,9 @@ export type Campaign = {
   // counting clip a clipper submits each ET week carries it as its
   // flat_fee_snapshot; per-clipper flat_fee_per_clip does not apply.
   weekly_base_pay_usd: string | null;
+  // Flat bonus a clip earns when the clipper tags it "sponsored" (folded
+  // into the clip's flat_fee_snapshot at tag time; see lib/sponsored.ts).
+  sponsored_bonus_usd: string;
   // Allow submitting posts authored by a different X account than the
   // clipper's linked/alt handles (ghostwriting).
   allow_external_authors: boolean;

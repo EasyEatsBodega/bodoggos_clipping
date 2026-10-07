@@ -38,6 +38,19 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
   const isSponsored = sponsoredTag
     ? (await getSponsoredClipIds(supabase, sponsoredTag.id, [clip.id])).has(clip.id)
     : false;
+  // Bonus to show on the toggle: what this clip already carries, else what
+  // tagging it now would add (the campaign setting).
+  const { data: clipCampaign } = sponsoredTag
+    ? await supabase
+        .from("campaigns")
+        .select("sponsored_bonus_usd")
+        .eq("id", clip.campaign_id)
+        .maybeSingle()
+    : { data: null };
+  const sponsoredBonusUsd =
+    Number(clip.sponsored_bonus_snapshot ?? 0) > 0
+      ? Number(clip.sponsored_bonus_snapshot)
+      : Number(clipCampaign?.sponsored_bonus_usd ?? 0);
 
   const points =
     snapshots?.map((s) => ({
@@ -72,7 +85,11 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         {sponsoredTag && (
-          <SponsoredToggle clipId={clip.id} initialSponsored={isSponsored} />
+          <SponsoredToggle
+            clipId={clip.id}
+            initialSponsored={isSponsored}
+            bonusUsd={sponsoredBonusUsd}
+          />
         )}
 
         {clip.botting_suspected && (

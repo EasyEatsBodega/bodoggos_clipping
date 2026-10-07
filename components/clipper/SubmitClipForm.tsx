@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { fmtUsd } from "@/lib/format";
 
 export type CreatorOption = { id: string; label: string };
 
@@ -12,6 +13,7 @@ export function SubmitClipForm({
   creators = [],
   allowExternalAuthors = false,
   canMarkSponsored = false,
+  sponsoredBonusUsd = 0,
 }: {
   campaignId: string;
   campaignName: string;
@@ -20,6 +22,8 @@ export function SubmitClipForm({
   // True when the built-in "sponsored" tag exists; shows the disclosure
   // checkbox. The page checks the tag so a deleted tag just hides it.
   canMarkSponsored?: boolean;
+  // Flat bonus a sponsored post earns in this campaign (0 = disclosure only).
+  sponsoredBonusUsd?: number;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -116,10 +120,18 @@ export function SubmitClipForm({
             onChange={(e) => setSponsored(e.target.checked)}
           />
           <span className="flex flex-col gap-0.5">
-            <span>sponsored post</span>
+            <span>
+              sponsored post
+              {sponsoredBonusUsd > 0 && (
+                <span className="text-accent"> · +{fmtUsd(sponsoredBonusUsd)}</span>
+              )}
+            </span>
             <span className="text-text-3">
-              tick if this is a paid / sponsored placement — you can change it later from
-              the clip page
+              tick if this is a paid / sponsored placement
+              {sponsoredBonusUsd > 0
+                ? ` — adds ${fmtUsd(sponsoredBonusUsd)} to this clip's payout`
+                : ""}
+              . you can change it later from the clip page
             </span>
           </span>
         </label>

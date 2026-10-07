@@ -3,7 +3,11 @@ import { Header } from "@/components/Header";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
-import { computePayoutCents, computeRollingOwedCents } from "@/lib/payout-calc";
+import {
+  computePayoutCents,
+  computeRollingOwedCents,
+  latestMarksByClipId,
+} from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { RowPayButton } from "@/components/admin/RowPayButton";
 import { RosterActiveToggle } from "@/components/admin/RosterActiveToggle";
@@ -154,11 +158,17 @@ export default async function AdminClippersPage({
         .order("id", { ascending: true })
         .range(from, to),
     ),
-    fetchAllPages<{ clip_id: string; impressions_at_mark: number }>((from, to) =>
+    fetchAllPages<{
+      clip_id: string;
+      impressions_at_mark: number;
+      flat_fee_at_mark: string | null;
+      created_at: string;
+    }>((from, to) =>
       admin
         .from("payout_clip_marks")
-        .select("clip_id, impressions_at_mark")
+        .select("clip_id, impressions_at_mark, flat_fee_at_mark, created_at")
         .order("clip_id", { ascending: true })
+        .order("created_at", { ascending: true })
         .range(from, to),
     ),
     fetchAllPages<{
@@ -220,20 +230,19 @@ export default async function AdminClippersPage({
     stats.set(p.clipper_id, cur);
   }
 
-  // For each clipper, the latest impressions_at_mark per clip.
-  const marksByClipper = new Map<string, Map<string, number>>();
+  // For each clipper, the latest watermark per clip (impressions + flat
+  // paid), via the same reducer the clipper detail page uses.
+  const markRowsByClipper = new Map<string, typeof marks>();
   for (const m of marks ?? []) {
     const clipperId = clipToClipper.get(m.clip_id);
     if (!clipperId) continue;
-    let cm = marksByClipper.get(clipperId);
-    if (!cm) {
-      cm = new Map();
-      marksByClipper.set(clipperId, cm);
-    }
-    const cur = cm.get(m.clip_id);
-    if (cur == null || m.impressions_at_mark > cur) {
-      cm.set(m.clip_id, m.impressions_at_mark);
-    }
+    const arr = markRowsByClipper.get(clipperId) ?? [];
+    arr.push(m);
+    markRowsByClipper.set(clipperId, arr);
+  }
+  const marksByClipper = new Map<string, ReturnType<typeof latestMarksByClipId>>();
+  for (const [clipperId, rows] of markRowsByClipper) {
+    marksByClipper.set(clipperId, latestMarksByClipId(rows));
   }
 
   type Row = {

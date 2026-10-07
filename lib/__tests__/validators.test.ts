@@ -24,6 +24,19 @@ describe("campaign validators", () => {
     ).toBe(true);
   });
 
+  it("sponsored bonus is optional, defaults server-side, and can't be negative", () => {
+    expect(campaignConfigSchema.safeParse(validConfig).success).toBe(true);
+    expect(
+      campaignConfigSchema.safeParse({ ...validConfig, sponsored_bonus_usd: 25 }).success,
+    ).toBe(true);
+    expect(
+      campaignConfigSchema.safeParse({ ...validConfig, sponsored_bonus_usd: 0 }).success,
+    ).toBe(true);
+    expect(
+      campaignConfigSchema.safeParse({ ...validConfig, sponsored_bonus_usd: -5 }).success,
+    ).toBe(false);
+  });
+
   it("rejects cpm 0 with no weekly base — campaign would pay nothing", () => {
     const r = campaignConfigSchema.safeParse({
       ...validConfig,

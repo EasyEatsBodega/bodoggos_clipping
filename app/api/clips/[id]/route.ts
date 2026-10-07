@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { clipSponsoredSchema } from "@/lib/validators";
 import { getSponsoredTag } from "@/lib/queries";
+import { syncSponsoredBonus } from "@/lib/sponsored";
 
 export async function GET(
   _req: Request,
@@ -106,5 +107,17 @@ export async function PATCH(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, sponsored: parsed.data.sponsored });
+  // Money follows the tag: add / remove the campaign's sponsored bonus.
+  let bonus = 0;
+  try {
+    bonus = (await syncSponsoredBonus(admin, clip.id)).bonus;
+  } catch (e) {
+    console.error("[clips] sponsored bonus sync failed", e);
+    return NextResponse.json(
+      { error: "saved the tag but could not update the payout — contact an admin" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, sponsored: parsed.data.sponsored, bonus });
 }

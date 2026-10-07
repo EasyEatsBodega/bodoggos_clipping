@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { setClipTagsSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
+import { syncSponsoredBonus } from "@/lib/sponsored";
 
 // Replace the full set of tags for a clip with the provided list.
 export async function PUT(
@@ -60,6 +61,20 @@ export async function PUT(
       .from("clip_tag_assignments")
       .insert(rows);
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+  }
+
+  // The built-in "sponsored" tag carries a payout bonus; keep the clip's
+  // money in step with whatever this replace did to it.
+  if (!parsed.data.kind || parsed.data.kind === "topic") {
+    try {
+      await syncSponsoredBonus(auth.admin, id);
+    } catch (e) {
+      console.error("[admin/clips/tags] sponsored bonus sync failed", e);
+      return NextResponse.json(
+        { error: "tags saved but the sponsored bonus could not be updated" },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, count: parsed.data.tag_ids.length });

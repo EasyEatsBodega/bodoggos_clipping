@@ -197,6 +197,8 @@ const campaignConfigBase = z.object({
   ends_at: isoDateString.nullable().optional(),
   budget_usd: z.number().positive().max(10_000_000).nullable().optional(),
   weekly_base_pay_usd: z.number().positive().max(100_000).nullable().optional(),
+  // Flat bonus per clip the clipper tags "sponsored" (0 = disclosure only).
+  sponsored_bonus_usd: z.number().nonnegative().max(10_000).optional(),
   allow_external_authors: z.boolean().optional(),
 });
 

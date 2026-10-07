@@ -34,6 +34,9 @@ export async function PATCH(
         parsed.data.weekly_base_pay_usd != null
           ? parsed.data.weekly_base_pay_usd.toFixed(2)
           : null,
+      ...(parsed.data.sponsored_bonus_usd != null
+        ? { sponsored_bonus_usd: parsed.data.sponsored_bonus_usd.toFixed(2) }
+        : {}),
       allow_external_authors: parsed.data.allow_external_authors ?? false,
     })
     .eq("id", id);
