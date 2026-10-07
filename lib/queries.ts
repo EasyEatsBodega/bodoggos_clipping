@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { billableImpressions, computePayoutAmount, sumNumeric } from "./payout-calc";
+import { SPONSORED_TAG_SLUG } from "./tags";
 import {
   computeTaxStatus,
   currentTaxYear,
@@ -268,8 +269,10 @@ export async function getClipperKpis(
 
 // Snapshots the current billable impression count for every non-rejected
 // clip belonging to a clipper as a payout_clip_marks row attached to the
-// just-inserted payout. The next "rolling owed" calc will only count
-// impressions above these watermarks. Errors are swallowed (logged) — the
+// just-inserted payout, together with the flat fee on the clip at that
+// moment (so a flat amount added later — a sponsored bonus — still shows
+// as owed). The next "rolling owed" calc will only count impressions above
+// these watermarks. Errors are swallowed (logged) — the
 // payment is the source of truth, marks are an accounting refinement; if
 // they fail the next payout will overpay slightly rather than block a
 // confirmed transfer from being recorded.
@@ -280,7 +283,7 @@ export async function snapshotClipMarks(
 ): Promise<void> {
   const { data: clips, error } = await supabase
     .from("clips")
-    .select("id, status, impressions, final_impressions")
+    .select("id, status, impressions, final_impressions, flat_fee_snapshot")
     .eq("clipper_id", clipperId)
     .neq("status", "rejected");
   if (error || !clips) {
@@ -292,6 +295,7 @@ export async function snapshotClipMarks(
   const rows = clips.map((c) => ({
     payout_id: payoutId,
     clip_id: c.id,
+    flat_fee_at_mark: c.flat_fee_snapshot ?? "0",
     impressions_at_mark: billableImpressions({
       id: c.id,
       status: c.status,
@@ -308,4 +312,40 @@ export async function snapshotClipMarks(
   if (insErr) {
     console.error("snapshotClipMarks: failed to insert marks", insErr);
   }
+}
+
+// The built-in clipper-selectable "sponsored" tag (see lib/tags.ts), or
+// null if an admin removed it. Readable by any authenticated user, so this
+// works with both the RLS-scoped server client and the admin client.
+export async function getSponsoredTag(
+  supabase: SupabaseClient,
+): Promise<{ id: string; label: string } | null> {
+  const { data } = await supabase
+    .from("clip_tags")
+    .select("id, label")
+    .eq("slug", SPONSORED_TAG_SLUG)
+    .maybeSingle();
+  return data ?? null;
+}
+
+// Which of the given clips carry the sponsored tag. Used by the clipper
+// pages to badge their own clips (RLS lets a clipper read assignments on
+// their own clips). Chunked so a prolific clipper doesn't blow the URL
+// length limit on the `in` filter.
+export async function getSponsoredClipIds(
+  supabase: SupabaseClient,
+  sponsoredTagId: string,
+  clipIds: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const CHUNK = 200;
+  for (let i = 0; i < clipIds.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("clip_tag_assignments")
+      .select("clip_id")
+      .eq("tag_id", sponsoredTagId)
+      .in("clip_id", clipIds.slice(i, i + CHUNK));
+    for (const a of data ?? []) out.add(a.clip_id);
+  }
+  return out;
 }

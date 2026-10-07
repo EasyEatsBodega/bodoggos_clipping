@@ -5,7 +5,12 @@ import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { ClipsTable } from "@/components/clipper/ClipsTable";
 import { ClipperNav } from "@/components/clipper/ClipperNav";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getActiveCampaigns, getClipperKpis } from "@/lib/queries";
+import {
+  getActiveCampaigns,
+  getClipperKpis,
+  getSponsoredClipIds,
+  getSponsoredTag,
+} from "@/lib/queries";
 import { fmtInt, fmtUsd } from "@/lib/format";
 import { TaxComplianceNotice } from "@/components/clipper/TaxComplianceNotice";
 import { computeTaxStatus, currentTaxYear, earnedCentsInYear } from "@/lib/tax-compliance";
@@ -27,8 +32,14 @@ export default async function DashboardPage() {
   if (!clipper) redirect("/onboarding");
 
   const taxYear = currentTaxYear();
-  const [{ data: clips }, kpis, campaigns, { data: enrollments }, { data: taxInfo }] =
-    await Promise.all([
+  const [
+    { data: clips },
+    kpis,
+    campaigns,
+    { data: enrollments },
+    { data: taxInfo },
+    sponsoredTag,
+  ] = await Promise.all([
       supabase
         .from("clips")
         .select("*")
@@ -43,7 +54,16 @@ export default async function DashboardPage() {
         .eq("clipper_id", user.id)
         .eq("tax_year", taxYear)
         .maybeSingle(),
+      getSponsoredTag(supabase),
     ]);
+
+  const sponsoredClipIds = sponsoredTag
+    ? await getSponsoredClipIds(
+        supabase,
+        sponsoredTag.id,
+        (clips ?? []).map((c) => c.id),
+      )
+    : new Set<string>();
 
   const taxStatus = computeTaxStatus(
     earnedCentsInYear(clips ?? [], taxYear),
@@ -200,7 +220,10 @@ export default async function DashboardPage() {
 
         <section className="flex flex-col gap-3">
           <h2 className="label">all your clips</h2>
-          <ClipsTable clips={(clips ?? []) as Clip[]} />
+          <ClipsTable
+            clips={(clips ?? []) as Clip[]}
+            sponsoredClipIds={[...sponsoredClipIds]}
+          />
         </section>
       </main>
     </div>

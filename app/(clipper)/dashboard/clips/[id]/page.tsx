@@ -4,7 +4,10 @@ import { Header } from "@/components/Header";
 import { StatCell, StatGrid } from "@/components/ui/StatCell";
 import { SnapshotChart } from "@/components/clipper/SnapshotChart";
 import { DeleteClipButton } from "@/components/clipper/DeleteClipButton";
+import { SponsoredPill } from "@/components/clipper/SponsoredPill";
+import { SponsoredToggle } from "@/components/clipper/SponsoredToggle";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSponsoredClipIds, getSponsoredTag } from "@/lib/queries";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import { computePayoutAmount } from "@/lib/payout-calc";
 
@@ -29,6 +32,25 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     .select("impressions, captured_at")
     .eq("clip_id", id)
     .order("captured_at", { ascending: true });
+
+  // Sponsored disclosure: the one tag a clipper can set themselves.
+  const sponsoredTag = await getSponsoredTag(supabase);
+  const isSponsored = sponsoredTag
+    ? (await getSponsoredClipIds(supabase, sponsoredTag.id, [clip.id])).has(clip.id)
+    : false;
+  // Bonus to show on the toggle: what this clip already carries, else what
+  // tagging it now would add (the campaign setting).
+  const { data: clipCampaign } = sponsoredTag
+    ? await supabase
+        .from("campaigns")
+        .select("sponsored_bonus_usd")
+        .eq("id", clip.campaign_id)
+        .maybeSingle()
+    : { data: null };
+  const sponsoredBonusUsd =
+    Number(clip.sponsored_bonus_snapshot ?? 0) > 0
+      ? Number(clip.sponsored_bonus_snapshot)
+      : Number(clipCampaign?.sponsored_bonus_usd ?? 0);
 
   const points =
     snapshots?.map((s) => ({
@@ -56,10 +78,19 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
           >
             {clip.url} ↗
           </a>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-text-2">
-            submitted {fmtRelative(clip.submitted_at)}
+          <span className="font-mono text-[10px] uppercase tracking-widest text-text-2 flex items-center gap-3">
+            {isSponsored && <SponsoredPill />}
+            <span>submitted {fmtRelative(clip.submitted_at)}</span>
           </span>
         </div>
+
+        {sponsoredTag && (
+          <SponsoredToggle
+            clipId={clip.id}
+            initialSponsored={isSponsored}
+            bonusUsd={sponsoredBonusUsd}
+          />
+        )}
 
         {clip.botting_suspected && (
           <div

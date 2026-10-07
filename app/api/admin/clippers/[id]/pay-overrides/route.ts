@@ -38,7 +38,9 @@ export async function POST(
   // per-campaign rate where there's no override.
   const { data: clips, error: clipsErr } = await auth.admin
     .from("clips")
-    .select("id, status, impressions, final_impressions, campaign_id, min_views_snapshot")
+    .select(
+      "id, status, impressions, final_impressions, campaign_id, min_views_snapshot, flat_fee_snapshot, sponsored_bonus_snapshot",
+    )
     .eq("clipper_id", id);
   if (clipsErr) return NextResponse.json({ error: clipsErr.message }, { status: 500 });
 
@@ -47,17 +49,21 @@ export async function POST(
   const campaignIds = Array.from(
     new Set((clips ?? []).map((c) => c.campaign_id)),
   );
-  const campaignDefaults = new Map<string, { cpm_rate: string; max_payout_per_clip: string }>();
+  const campaignDefaults = new Map<
+    string,
+    { cpm_rate: string; max_payout_per_clip: string; weekly_base_pay_usd: string | null }
+  >();
   if (campaignIds.length > 0) {
     const { data: camps, error: campsErr } = await auth.admin
       .from("campaigns")
-      .select("id, cpm_rate, max_payout_per_clip")
+      .select("id, cpm_rate, max_payout_per_clip, weekly_base_pay_usd")
       .in("id", campaignIds);
     if (campsErr) return NextResponse.json({ error: campsErr.message }, { status: 500 });
     for (const c of camps ?? []) {
       campaignDefaults.set(c.id, {
         cpm_rate: c.cpm_rate,
         max_payout_per_clip: c.max_payout_per_clip,
+        weekly_base_pay_usd: c.weekly_base_pay_usd ?? null,
       });
     }
   }
@@ -70,7 +76,15 @@ export async function POST(
     const campMax = defaults?.max_payout_per_clip ?? 0;
     const effectiveCpm = parsed.data.cpm_rate_override ?? campCpm;
     const effectiveMax = parsed.data.max_payout_override ?? campMax;
-    const effectiveFlat = parsed.data.flat_fee_per_clip;
+    // Weekly-base campaigns carry the weekly base in flat_fee_snapshot (on
+    // the first clip of each week), so the per-clipper flat doesn't apply
+    // there — keep what's on the clip. Elsewhere, re-add the sponsored
+    // bonus the clip carries so the override doesn't silently drop it.
+    const sponsoredBonus = Number(c.sponsored_bonus_snapshot ?? 0);
+    const effectiveFlat =
+      defaults?.weekly_base_pay_usd != null
+        ? Number(c.flat_fee_snapshot ?? 0)
+        : parsed.data.flat_fee_per_clip + sponsoredBonus;
 
     const update: Record<string, unknown> = {
       cpm_rate_snapshot: effectiveCpm,

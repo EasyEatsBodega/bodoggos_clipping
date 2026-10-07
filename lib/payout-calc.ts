@@ -12,6 +12,10 @@
 // cases here. A cpm rate of 0 in those campaigns means impressions are
 // tracked but earn nothing on top of the base.
 //
+// The sponsored-post bonus (campaigns.sponsored_bonus_usd) is folded into
+// the same flat fee when a clip carries the "sponsored" tag; the clip's
+// sponsored_bonus_snapshot records that component (lib/sponsored.ts).
+//
 // minViews is a per-campaign eligibility floor: a clip below it earns
 // nothing at all (not even the flat fee) until it crosses the threshold.
 // Once eligible, CPM applies from the first view — the floor is a gate,
@@ -90,9 +94,15 @@ export function billableImpressions(c: ClipForOwed): number {
 // The watermark is per-clip. Clips with no marks yet are treated as if the
 // last watermark were zero impressions, so the first payout naturally
 // sweeps in the flat fee and all CPM earnings to date.
+// A payout watermark for one clip: the billable impressions at the time of
+// the payout plus, for marks taken after migration 0026, the flat amount
+// the ledger considered paid then. flatFee null = legacy mark: assume the
+// clip's current flat fee was already paid (the pre-0026 behaviour).
+export type ClipMark = { impressions: number; flatFee: number | null };
+
 export function computeRollingOwedCents(
   clips: ClipForOwed[],
-  marksByClipId: Map<string, number>,
+  marksByClipId: Map<string, number | ClipMark>,
 ): number {
   let total = 0;
   for (const c of clips) {
@@ -100,24 +110,31 @@ export function computeRollingOwedCents(
     if (c.botting_suspected) continue;
     const nowImpressions = billableImpressions(c);
     const minViews = Number(c.min_views_snapshot ?? 0);
+    const flatNow = c.flat_fee_snapshot ?? 0;
     const earnedNow = computePayoutCents(
       nowImpressions,
       c.cpm_rate_snapshot,
       c.max_payout_snapshot,
-      c.flat_fee_snapshot ?? 0,
+      flatNow,
       minViews,
     );
     // "No mark yet" (clip never appeared in a prior payout) means nothing
     // has been paid for this clip, so earnedAtMark = 0 and the first
-    // payout sweeps in the flat fee. A present mark — even at 0
-    // impressions — means the flat fee was already paid and we should
-    // only owe the CPM growth above the watermark.
-    const earnedAtMark = marksByClipId.has(c.id)
+    // payout sweeps in the flat fee. A present mark means the flat amount
+    // recorded on it (or, for legacy marks, the current one) was already
+    // paid, so we owe only the CPM growth above the watermark plus any flat
+    // amount added since — e.g. a sponsored bonus tagged after payday.
+    // Clamped at zero per clip: a flat amount removed after it was paid is
+    // netted against that clip's future earnings, never clawed back.
+    const raw = marksByClipId.get(c.id);
+    const mark: ClipMark | null =
+      raw == null ? null : typeof raw === "number" ? { impressions: raw, flatFee: null } : raw;
+    const earnedAtMark = mark
       ? computePayoutCents(
-          marksByClipId.get(c.id) ?? 0,
+          mark.impressions,
           c.cpm_rate_snapshot,
           c.max_payout_snapshot,
-          c.flat_fee_snapshot ?? 0,
+          mark.flatFee ?? flatNow,
           minViews,
         )
       : 0;
@@ -126,18 +143,39 @@ export function computeRollingOwedCents(
   return total;
 }
 
-// Builds Map<clip_id, latest_impressions_at_mark> from a flat list of
-// payout_clip_marks rows. Used by both server pages and pay routes.
+// Builds Map<clip_id, ClipMark> from a flat list of payout_clip_marks rows:
+// per clip, the mark with the highest impressions (conservative — a later
+// mark taken while the clip was botting-suspected sits at 0 and must not
+// reopen already-paid views). On a tie the most recent mark wins, so a
+// payout that settled a later-added flat amount (sponsored bonus) at the
+// same impression count is the one trusted. Used by server pages and pay
+// routes.
 export function latestMarksByClipId(
-  marks: Array<{ clip_id: string; impressions_at_mark: number }>,
-): Map<string, number> {
-  const out = new Map<string, number>();
+  marks: Array<{
+    clip_id: string;
+    impressions_at_mark: number;
+    flat_fee_at_mark?: string | number | null;
+    created_at?: string | null;
+  }>,
+): Map<string, ClipMark> {
+  const best = new Map<string, { mark: ClipMark; createdAt: number }>();
   for (const m of marks) {
-    const cur = out.get(m.clip_id);
-    if (cur == null || m.impressions_at_mark > cur) {
-      out.set(m.clip_id, m.impressions_at_mark);
+    const createdAt = m.created_at ? new Date(m.created_at).getTime() : 0;
+    const flatFee = m.flat_fee_at_mark == null ? null : Number(m.flat_fee_at_mark);
+    const cur = best.get(m.clip_id);
+    const wins =
+      cur == null ||
+      m.impressions_at_mark > cur.mark.impressions ||
+      (m.impressions_at_mark === cur.mark.impressions && createdAt > cur.createdAt);
+    if (wins) {
+      best.set(m.clip_id, {
+        mark: { impressions: m.impressions_at_mark, flatFee },
+        createdAt,
+      });
     }
   }
+  const out = new Map<string, ClipMark>();
+  for (const [id, b] of best) out.set(id, b.mark);
   return out;
 }
 

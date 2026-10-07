@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         parsed.data.weekly_base_pay_usd != null
           ? parsed.data.weekly_base_pay_usd.toFixed(2)
           : null,
+      sponsored_bonus_usd: (parsed.data.sponsored_bonus_usd ?? 25).toFixed(2),
       allow_external_authors: parsed.data.allow_external_authors ?? false,
     })
     .select()

@@ -8,6 +8,7 @@ import { computePayoutCents } from "@/lib/payout-calc";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { CreateTagForm } from "@/components/admin/CreateTagForm";
 import { DeleteTagButton } from "@/components/admin/DeleteTagButton";
+import { SPONSORED_TAG_SLUG } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +123,14 @@ export default async function AdminTagsPage() {
                         >
                           {t.label}
                         </Link>
+                        {t.slug === SPONSORED_TAG_SLUG && (
+                          <span
+                            className="ml-2 font-mono text-[9px] uppercase tracking-widest text-text-3"
+                            title="built-in: clippers tick this themselves when submitting a sponsored post. deleting it removes that checkbox."
+                          >
+                            self-serve
+                          </span>
+                        )}
                       </TD>
                       <TD className="font-mono text-[10px] uppercase tracking-widest text-text-2">
                         {t.kind ?? "topic"}

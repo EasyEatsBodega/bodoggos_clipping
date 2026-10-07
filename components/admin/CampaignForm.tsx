@@ -50,6 +50,7 @@ export function CampaignForm(props: Props) {
     cpm_rate: c ? Number(c.cpm_rate) : 4,
     max_payout_per_clip: c ? Number(c.max_payout_per_clip) : 75,
     tracking_days: c?.tracking_days ?? 7,
+    sponsored_bonus_usd: c ? Number(c.sponsored_bonus_usd ?? 25) : 25,
     min_views: c?.min_views != null ? Number(c.min_views) : "",
     allow_external_authors: c?.allow_external_authors ?? false,
     active: c?.active ?? false,
@@ -73,6 +74,7 @@ export function CampaignForm(props: Props) {
       cpm_rate: Number(form.cpm_rate),
       max_payout_per_clip: Number(form.max_payout_per_clip),
       tracking_days: Number(form.tracking_days),
+      sponsored_bonus_usd: Number(form.sponsored_bonus_usd),
       // The min-views floor also gates the flat fee on the clip carrying the
       // weekly base, which would silently forfeit the retainer — so weekly-
       // base campaigns never set one.
@@ -248,6 +250,18 @@ export function CampaignForm(props: Props) {
           max="90"
           value={form.tracking_days}
           onChange={(e) => setForm({ ...form, tracking_days: Number(e.target.value) })}
+        />
+        <Input
+          id="sponsored_bonus"
+          label="sponsored post bonus (usd / post, 0 = none)"
+          required
+          type="number"
+          step="0.01"
+          min="0"
+          value={form.sponsored_bonus_usd}
+          onChange={(e) =>
+            setForm({ ...form, sponsored_bonus_usd: Number(e.target.value) })
+          }
         />
         <Input
           id="budget"

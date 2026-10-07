@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { fetchAllPages } from "@/lib/queries";
+import { fetchAllPages, getSponsoredTag } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // Either, both, or neither may be provided. Pass via query string (GET) or
 // JSON body (GET/POST). Returns one row per non-rejected clip with the
 // fields the tracker needs: handle, submission date, tweet link, creator,
-// partner.
+// partner, impressions, and whether the clipper marked it as sponsored.
 
 type ClipRow = {
   handle: string | null;
@@ -24,6 +24,7 @@ type ClipRow = {
   creator: string | null;
   partner: string | null;
   impressions: number;
+  sponsored: boolean;
 };
 
 export async function GET(req: Request) {
@@ -53,6 +54,9 @@ async function handle(req: Request): Promise<NextResponse> {
   }
   const tags = tagsRaw ?? [];
   const tagById = new Map(tags.map((t) => [t.id, t]));
+  // Built-in clipper-set "sponsored" disclosure (lib/tags.ts) — a topic
+  // tag, so it isn't in the creator/partner set above.
+  const sponsoredTagId = (await getSponsoredTag(admin))?.id ?? null;
 
   // Resolve partner (exact, case-insensitive, slug or label).
   let resolvedPartner: { id: string; label: string } | null = null;
@@ -200,6 +204,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const clipIds = clips.map((c) => c.id);
   const creatorByClip = new Map<string, string[]>();
   const partnerByClip = new Map<string, string[]>();
+  const sponsoredClips = new Set<string>();
   if (clipIds.length) {
     let assignments: Array<{ clip_id: string; tag_id: string }> = [];
     try {
@@ -216,6 +221,10 @@ async function handle(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: String(e) }, { status: 500 });
     }
     for (const a of assignments) {
+      if (sponsoredTagId && a.tag_id === sponsoredTagId) {
+        sponsoredClips.add(a.clip_id);
+        continue;
+      }
       const tag = tagById.get(a.tag_id);
       if (!tag) continue;
       const target = tag.kind === "creator" ? creatorByClip : partnerByClip;
@@ -239,6 +248,7 @@ async function handle(req: Request): Promise<NextResponse> {
       creator: creators.length ? creators.join(", ") : null,
       partner: partners.length ? partners.join(", ") : null,
       impressions: views,
+      sponsored: sponsoredClips.has(c.id),
     };
   });
 

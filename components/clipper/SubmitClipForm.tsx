@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { fmtUsd } from "@/lib/format";
 
 export type CreatorOption = { id: string; label: string };
 
@@ -11,15 +12,23 @@ export function SubmitClipForm({
   campaignName,
   creators = [],
   allowExternalAuthors = false,
+  canMarkSponsored = false,
+  sponsoredBonusUsd = 0,
 }: {
   campaignId: string;
   campaignName: string;
   creators?: CreatorOption[];
   allowExternalAuthors?: boolean;
+  // True when the built-in "sponsored" tag exists; shows the disclosure
+  // checkbox. The page checks the tag so a deleted tag just hides it.
+  canMarkSponsored?: boolean;
+  // Flat bonus a sponsored post earns in this campaign (0 = disclosure only).
+  sponsoredBonusUsd?: number;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [creatorTagId, setCreatorTagId] = useState("");
+  const [sponsored, setSponsored] = useState(false);
   const [state, setState] = useState<"idle" | "submitting">("idle");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -38,6 +47,7 @@ export function SubmitClipForm({
         url,
         campaign_id: campaignId,
         ...(creatorTagId ? { creator_tag_id: creatorTagId } : {}),
+        ...(canMarkSponsored ? { sponsored } : {}),
       }),
     });
     const json = await res.json();
@@ -49,6 +59,7 @@ export function SubmitClipForm({
     setOk("Clip accepted. Tracking begins now.");
     setUrl("");
     setCreatorTagId("");
+    setSponsored(false);
     router.refresh();
   }
 
@@ -100,6 +111,31 @@ export function SubmitClipForm({
           {state === "submitting" ? "Verifying…" : "Submit"}
         </Button>
       </div>
+      {canMarkSponsored && (
+        <label className="flex items-start gap-2 font-mono text-xs">
+          <input
+            type="checkbox"
+            className="mt-[2px]"
+            checked={sponsored}
+            onChange={(e) => setSponsored(e.target.checked)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span>
+              sponsored post
+              {sponsoredBonusUsd > 0 && (
+                <span className="text-accent"> · +{fmtUsd(sponsoredBonusUsd)}</span>
+              )}
+            </span>
+            <span className="text-text-3">
+              tick if this is a paid / sponsored placement
+              {sponsoredBonusUsd > 0
+                ? ` — adds ${fmtUsd(sponsoredBonusUsd)} to this clip's payout`
+                : ""}
+              . you can change it later from the clip page
+            </span>
+          </span>
+        </label>
+      )}
       {error && <p className="font-mono text-xs text-danger">{error}</p>}
       {ok && <p className="font-mono text-xs text-accent">{ok}</p>}
     </form>
