@@ -3,8 +3,17 @@ import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
 import type { Clip } from "@/lib/db-types";
 import { DeleteClipButton } from "./DeleteClipButton";
+import { SponsoredPill } from "./SponsoredPill";
 
-export function ClipsTable({ clips }: { clips: Clip[] }) {
+export function ClipsTable({
+  clips,
+  sponsoredClipIds = [],
+}: {
+  clips: Clip[];
+  // Ids of clips carrying the built-in "sponsored" tag (see lib/tags.ts).
+  sponsoredClipIds?: string[];
+}) {
+  const sponsored = new Set(sponsoredClipIds);
   if (!clips.length) {
     return (
       <div className="border border-border p-10 text-center text-text-2 font-mono text-sm">
@@ -30,6 +39,11 @@ export function ClipsTable({ clips }: { clips: Clip[] }) {
             <TR key={c.id}>
               <TD className="font-mono text-xs text-text-2 max-w-[260px]">
                 <div className="truncate">{c.url}</div>
+                {sponsored.has(c.id) && (
+                  <div className="mt-1">
+                    <SponsoredPill />
+                  </div>
+                )}
                 {c.status === "rejected" && c.rejected_reason && (
                   <div className="text-danger text-[10px] mt-1 normal-case">
                     rejected: {c.rejected_reason}

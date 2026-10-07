@@ -4,7 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { submitClipSchema } from "@/lib/validators";
 import { parseTweetUrl } from "@/lib/url-canonicalizer";
 import { getXProvider } from "@/lib/x-provider";
-import { getCampaignSpend, isCampaignOpen } from "@/lib/queries";
+import { getCampaignSpend, getSponsoredTag, isCampaignOpen } from "@/lib/queries";
 import { weekStartET, weekEndET } from "@/lib/week";
 
 export async function POST(req: Request) {
@@ -162,6 +162,21 @@ export async function POST(req: Request) {
     }
   }
 
+  // Sponsored disclosure: resolve the built-in tag before inserting so a
+  // stale form (tag deleted since the page loaded) fails loudly instead of
+  // silently dropping something the clipper deliberately declared.
+  let sponsoredTagId: string | null = null;
+  if (parsed.data.sponsored) {
+    const sponsoredTag = await getSponsoredTag(admin);
+    if (!sponsoredTag) {
+      return NextResponse.json(
+        { error: "sponsored marking is not available right now — refresh and try again" },
+        { status: 400 },
+      );
+    }
+    sponsoredTagId = sponsoredTag.id;
+  }
+
   const trackingUntil = new Date();
   trackingUntil.setUTCDate(trackingUntil.getUTCDate() + Number(campaign.tracking_days));
 
@@ -222,17 +237,20 @@ export async function POST(req: Request) {
     source: "twitterapi_io",
   });
 
-  // Attach the creator tag the clipper picked. assigned_by stays null —
-  // it references admin_users and this attribution came from the clipper.
+  // Attach the tags the clipper picked: creator attribution and/or the
+  // sponsored disclosure. assigned_by stays null — it references
+  // admin_users and these came from the clipper.
+  const tagRows: { clip_id: string; tag_id: string }[] = [];
   if (parsed.data.creator_tag_id && creatorTagIds.has(parsed.data.creator_tag_id)) {
-    const { error: tagErr } = await admin.from("clip_tag_assignments").insert({
-      clip_id: clip.id,
-      tag_id: parsed.data.creator_tag_id,
-    });
+    tagRows.push({ clip_id: clip.id, tag_id: parsed.data.creator_tag_id });
+  }
+  if (sponsoredTagId) tagRows.push({ clip_id: clip.id, tag_id: sponsoredTagId });
+  if (tagRows.length > 0) {
+    const { error: tagErr } = await admin.from("clip_tag_assignments").insert(tagRows);
     if (tagErr) {
-      // Clip is already accepted and tracking; a failed attribution write
-      // shouldn't fail the submission. Admin can still tag from /admin/clips.
-      console.error("[clips] creator tag assignment failed", tagErr);
+      // Clip is already accepted and tracking; a failed tag write shouldn't
+      // fail the submission. Admin can still tag from /admin/clips.
+      console.error("[clips] clip tag assignment failed", tagErr);
     }
   }
 

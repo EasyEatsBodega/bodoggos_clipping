@@ -6,7 +6,12 @@ import { SubmitClipForm } from "@/components/clipper/SubmitClipForm";
 import { EnrollCampaignButton } from "@/components/clipper/EnrollCampaignButton";
 import { ClipsTable } from "@/components/clipper/ClipsTable";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getCampaignSpend, isCampaignOpen } from "@/lib/queries";
+import {
+  getCampaignSpend,
+  getSponsoredClipIds,
+  getSponsoredTag,
+  isCampaignOpen,
+} from "@/lib/queries";
 import { fmtUsd } from "@/lib/format";
 import type { Campaign, Clip } from "@/lib/db-types";
 
@@ -52,7 +57,7 @@ export default async function ClipperCampaignDetailPage({
 
   const open = isCampaignOpen(campaign);
 
-  const [{ data: clips }, spent, { data: creatorTags }] = await Promise.all([
+  const [{ data: clips }, spent, { data: creatorTags }, sponsoredTag] = await Promise.all([
     supabase
       .from("clips")
       .select("*")
@@ -68,7 +73,18 @@ export default async function ClipperCampaignDetailPage({
       .eq("kind", "creator")
       .order("sort_order", { ascending: true })
       .order("label", { ascending: true }),
+    // Built-in "sponsored" tag: present → the submit form offers the
+    // disclosure checkbox and the clips list badges sponsored posts.
+    getSponsoredTag(supabase),
   ]);
+
+  const sponsoredClipIds = sponsoredTag
+    ? await getSponsoredClipIds(
+        supabase,
+        sponsoredTag.id,
+        (clips ?? []).map((c) => c.id),
+      )
+    : new Set<string>();
 
   const enrolled = !!enrollment;
   const budget = campaign.budget_usd != null ? Number(campaign.budget_usd) : null;
@@ -231,13 +247,14 @@ export default async function ClipperCampaignDetailPage({
             campaignName={campaign.name}
             creators={creatorTags ?? []}
             allowExternalAuthors={campaign.allow_external_authors}
+            canMarkSponsored={!!sponsoredTag}
           />
         )}
 
         <section className="flex flex-col gap-3">
           <h2 className="label">your clips for this campaign</h2>
           {clips && clips.length > 0 ? (
-            <ClipsTable clips={clips as Clip[]} />
+            <ClipsTable clips={clips as Clip[]} sponsoredClipIds={[...sponsoredClipIds]} />
           ) : (
             <p className="font-mono text-xs text-text-3">No clips submitted yet.</p>
           )}

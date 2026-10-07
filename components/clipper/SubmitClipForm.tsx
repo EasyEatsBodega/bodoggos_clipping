@@ -11,15 +11,20 @@ export function SubmitClipForm({
   campaignName,
   creators = [],
   allowExternalAuthors = false,
+  canMarkSponsored = false,
 }: {
   campaignId: string;
   campaignName: string;
   creators?: CreatorOption[];
   allowExternalAuthors?: boolean;
+  // True when the built-in "sponsored" tag exists; shows the disclosure
+  // checkbox. The page checks the tag so a deleted tag just hides it.
+  canMarkSponsored?: boolean;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [creatorTagId, setCreatorTagId] = useState("");
+  const [sponsored, setSponsored] = useState(false);
   const [state, setState] = useState<"idle" | "submitting">("idle");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -38,6 +43,7 @@ export function SubmitClipForm({
         url,
         campaign_id: campaignId,
         ...(creatorTagId ? { creator_tag_id: creatorTagId } : {}),
+        ...(canMarkSponsored ? { sponsored } : {}),
       }),
     });
     const json = await res.json();
@@ -49,6 +55,7 @@ export function SubmitClipForm({
     setOk("Clip accepted. Tracking begins now.");
     setUrl("");
     setCreatorTagId("");
+    setSponsored(false);
     router.refresh();
   }
 
@@ -100,6 +107,23 @@ export function SubmitClipForm({
           {state === "submitting" ? "Verifying…" : "Submit"}
         </Button>
       </div>
+      {canMarkSponsored && (
+        <label className="flex items-start gap-2 font-mono text-xs">
+          <input
+            type="checkbox"
+            className="mt-[2px]"
+            checked={sponsored}
+            onChange={(e) => setSponsored(e.target.checked)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span>sponsored post</span>
+            <span className="text-text-3">
+              tick if this is a paid / sponsored placement — you can change it later from
+              the clip page
+            </span>
+          </span>
+        </label>
+      )}
       {error && <p className="font-mono text-xs text-danger">{error}</p>}
       {ok && <p className="font-mono text-xs text-accent">{ok}</p>}
     </form>

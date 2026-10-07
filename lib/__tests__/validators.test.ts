@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   campaignConfigSchema,
+  clipSponsoredSchema,
   createCampaignSchema,
+  submitClipSchema,
   zodErrorSummary,
 } from "../validators";
 
@@ -54,5 +56,24 @@ describe("campaign validators", () => {
         slug: "bodoggos-writer-campaign",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("clip submission validators", () => {
+  const base = {
+    url: "https://x.com/someone/status/1234567890",
+    campaign_id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+  };
+
+  it("sponsored is optional and boolean", () => {
+    expect(submitClipSchema.safeParse(base).success).toBe(true);
+    expect(submitClipSchema.safeParse({ ...base, sponsored: true }).success).toBe(true);
+    expect(submitClipSchema.safeParse({ ...base, sponsored: "yes" }).success).toBe(false);
+  });
+
+  it("post-submit toggle requires an explicit boolean", () => {
+    expect(clipSponsoredSchema.safeParse({ sponsored: false }).success).toBe(true);
+    expect(clipSponsoredSchema.safeParse({}).success).toBe(false);
+    expect(clipSponsoredSchema.safeParse({ sponsored: 1 }).success).toBe(false);
   });
 });

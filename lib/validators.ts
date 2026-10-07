@@ -17,6 +17,15 @@ export const submitClipSchema = z.object({
   // Which creator's stream the clip came from (clip_tags row of kind
   // 'creator'). Enforced server-side whenever creator tags exist.
   creator_tag_id: z.string().uuid().optional(),
+  // Clipper's own disclosure that the post is a paid / sponsored placement.
+  // Stored as the built-in "sponsored" tag (lib/tags.ts).
+  sponsored: z.boolean().optional(),
+});
+
+// Clipper toggling the sponsored disclosure on one of their own clips
+// after submission (PATCH /api/clips/[id]).
+export const clipSponsoredSchema = z.object({
+  sponsored: z.boolean(),
 });
 
 export const banSchema = z.object({

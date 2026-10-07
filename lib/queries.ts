@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { billableImpressions, computePayoutAmount, sumNumeric } from "./payout-calc";
+import { SPONSORED_TAG_SLUG } from "./tags";
 import {
   computeTaxStatus,
   currentTaxYear,
@@ -308,4 +309,40 @@ export async function snapshotClipMarks(
   if (insErr) {
     console.error("snapshotClipMarks: failed to insert marks", insErr);
   }
+}
+
+// The built-in clipper-selectable "sponsored" tag (see lib/tags.ts), or
+// null if an admin removed it. Readable by any authenticated user, so this
+// works with both the RLS-scoped server client and the admin client.
+export async function getSponsoredTag(
+  supabase: SupabaseClient,
+): Promise<{ id: string; label: string } | null> {
+  const { data } = await supabase
+    .from("clip_tags")
+    .select("id, label")
+    .eq("slug", SPONSORED_TAG_SLUG)
+    .maybeSingle();
+  return data ?? null;
+}
+
+// Which of the given clips carry the sponsored tag. Used by the clipper
+// pages to badge their own clips (RLS lets a clipper read assignments on
+// their own clips). Chunked so a prolific clipper doesn't blow the URL
+// length limit on the `in` filter.
+export async function getSponsoredClipIds(
+  supabase: SupabaseClient,
+  sponsoredTagId: string,
+  clipIds: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const CHUNK = 200;
+  for (let i = 0; i < clipIds.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("clip_tag_assignments")
+      .select("clip_id")
+      .eq("tag_id", sponsoredTagId)
+      .in("clip_id", clipIds.slice(i, i + CHUNK));
+    for (const a of data ?? []) out.add(a.clip_id);
+  }
+  return out;
 }
