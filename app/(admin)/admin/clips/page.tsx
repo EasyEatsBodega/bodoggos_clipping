@@ -183,6 +183,7 @@ export default async function AdminClipsPage({
   const creatorIdsByClip = new Map<string, string[]>();
   const topicIdsByClip = new Map<string, string[]>();
   const partnerIdsByClip = new Map<string, string[]>();
+  const formatIdsByClip = new Map<string, string[]>();
   for (const a of assignments ?? []) {
     const k = tagKindById.get(a.tag_id);
     const target =
@@ -190,7 +191,9 @@ export default async function AdminClipsPage({
         ? creatorIdsByClip
         : k === "partner"
           ? partnerIdsByClip
-          : topicIdsByClip;
+          : k === "format"
+            ? formatIdsByClip
+            : topicIdsByClip;
     const cur = target.get(a.clip_id) ?? [];
     cur.push(a.tag_id);
     target.set(a.clip_id, cur);
@@ -330,6 +333,7 @@ export default async function AdminClipsPage({
           const creatorTags = tags.filter((t) => t.kind === "creator");
           const topicTags = tags.filter((t) => t.kind === "topic");
           const partnerTags = tags.filter((t) => t.kind === "partner");
+          const formatTags = tags.filter((t) => t.kind === "format");
           return (
             <>
               {partnerTags.length > 0 && (
@@ -413,6 +417,33 @@ export default async function AdminClipsPage({
                   })}
                 </div>
               )}
+              {formatTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-text-3">
+                    format:
+                  </span>
+                  <a
+                    href={buildHref({ ...baseParams, tag: undefined, sort: sortCol, dir: sortDir })}
+                    className={`btn ${!tagFilter ? "btn-primary" : "btn-ghost"}`}
+                    style={!tagFilter ? { background: "var(--format)", color: "#0a0a0b" } : undefined}
+                  >
+                    all
+                  </a>
+                  {formatTags.map((t) => {
+                    const on = tagFilter === t.slug;
+                    return (
+                      <a
+                        key={t.id}
+                        href={buildHref({ ...baseParams, tag: on ? undefined : t.slug, sort: sortCol, dir: sortDir })}
+                        className={`btn ${on ? "btn-primary" : "btn-ghost"}`}
+                        style={on ? { background: "var(--format)", color: "#0a0a0b" } : undefined}
+                      >
+                        {t.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
             </>
           );
         })()}
@@ -435,6 +466,7 @@ export default async function AdminClipsPage({
               <TH>partner</TH>
               <TH>creator</TH>
               <TH>topic</TH>
+              <TH>format</TH>
               <TH />
               <TH />
               <TH />
@@ -526,6 +558,14 @@ export default async function AdminClipsPage({
                       />
                     </TD>
                     <TD>
+                      <TagPicker
+                        clipId={c.id}
+                        allTags={tags}
+                        initialTagIds={formatIdsByClip.get(c.id) ?? []}
+                        kind="format"
+                      />
+                    </TD>
+                    <TD>
                       <OverrideClipButton clipId={c.id} current={c.impressions} />
                     </TD>
                     <TD>
@@ -543,7 +583,7 @@ export default async function AdminClipsPage({
               {filtered.length === 0 && (
                 <TR>
                   <TD className="text-text-3 font-mono text-sm">no clips match</TD>
-                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
+                  <TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD /><TD />
                 </TR>
               )}
             </TBody>

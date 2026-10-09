@@ -20,6 +20,9 @@ export const submitClipSchema = z.object({
   // Clipper's own disclosure that the post is a paid / sponsored placement.
   // Stored as the built-in "sponsored" tag (lib/tags.ts).
   sponsored: z.boolean().optional(),
+  // Which content format the post is (clip_tags row of kind 'format').
+  // Optional; validated server-side against real format tags.
+  format_tag_id: z.string().uuid().optional(),
 });
 
 // Clipper toggling the sponsored disclosure on one of their own clips
@@ -137,7 +140,7 @@ export const tagSchema = z.object({
     .max(40)
     .regex(/^[a-z0-9][a-z0-9_-]*$/, "lowercase letters, digits, dash, underscore"),
   label: z.string().min(1).max(60),
-  kind: z.enum(["topic", "creator", "partner"]).optional(),
+  kind: z.enum(["topic", "creator", "partner", "format"]).optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
 });
 
@@ -147,13 +150,16 @@ export const setClipTagsSchema = z
     // If kind is provided, only tags of that kind are replaced — other
     // kinds on the clip are preserved. Used so the creator picker and the
     // topic picker can save independently without clobbering each other.
-    kind: z.enum(["topic", "creator", "partner"]).optional(),
+    kind: z.enum(["topic", "creator", "partner", "format"]).optional(),
   })
-  // A clip can only be attributed to one partner at a time.
-  .refine((d) => d.kind !== "partner" || d.tag_ids.length <= 1, {
-    message: "a clip can have at most one partner",
-    path: ["tag_ids"],
-  });
+  // A clip can only have one partner and one format at a time.
+  .refine(
+    (d) => (d.kind !== "partner" && d.kind !== "format") || d.tag_ids.length <= 1,
+    {
+      message: "a clip can have at most one partner / format",
+      path: ["tag_ids"],
+    },
+  );
 
 export const createAdminSchema = z.object({
   email: z.string().email().max(200),

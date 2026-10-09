@@ -16,10 +16,10 @@ export function TagPicker({
   // If set, the picker only displays/edits tags of that kind and the
   // server-side save preserves tags of other kinds. If unset, the picker
   // shows all sections in a single dropdown and replaces all tags.
-  kind?: "topic" | "creator" | "partner";
+  kind?: "topic" | "creator" | "partner" | "format";
 }) {
-  // Partners are single-select: one partner per clip.
-  const singleSelect = kind === "partner";
+  // Partners and formats are single-select: one of each per clip.
+  const singleSelect = kind === "partner" || kind === "format";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(initialTagIds));
@@ -75,6 +75,7 @@ export function TagPicker({
   const topicTags = allTags.filter((t) => t.kind === "topic");
   const creatorTags = allTags.filter((t) => t.kind === "creator");
   const partnerTags = allTags.filter((t) => t.kind === "partner");
+  const formatTags = allTags.filter((t) => t.kind === "format");
   const addLabel =
     kind === "creator"
       ? "+ creator"
@@ -82,7 +83,9 @@ export function TagPicker({
         ? "+ topic"
         : kind === "partner"
           ? "+ partner"
-          : "+ tag";
+          : kind === "format"
+            ? "+ format"
+            : "+ tag";
 
   return (
     <div className="relative inline-flex flex-wrap items-center gap-1" ref={ref}>
@@ -135,6 +138,14 @@ export function TagPicker({
               busy={busy}
               onToggle={toggle}
             />
+          ) : kind === "format" ? (
+            <Section
+              title="format"
+              tags={formatTags}
+              selected={selected}
+              busy={busy}
+              onToggle={toggle}
+            />
           ) : (
             <>
               <Section
@@ -158,6 +169,13 @@ export function TagPicker({
                 busy={busy}
                 onToggle={toggle}
               />
+              <Section
+                title="format"
+                tags={formatTags}
+                selected={selected}
+                busy={busy}
+                onToggle={toggle}
+              />
             </>
           )}
           {error && (
@@ -172,6 +190,7 @@ export function TagPicker({
 function kindColor(kind: ClipTag["kind"]): string {
   if (kind === "creator") return "var(--accent)";
   if (kind === "partner") return "var(--partner)";
+  if (kind === "format") return "var(--format)";
   return "var(--admin)";
 }
 

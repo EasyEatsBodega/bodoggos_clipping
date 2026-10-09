@@ -11,6 +11,7 @@ export function SubmitClipForm({
   campaignId,
   campaignName,
   creators = [],
+  formats = [],
   allowExternalAuthors = false,
   canMarkSponsored = false,
   sponsoredBonusUsd = 0,
@@ -18,6 +19,8 @@ export function SubmitClipForm({
   campaignId: string;
   campaignName: string;
   creators?: CreatorOption[];
+  // Content formats (clip_tags of kind 'format'); optional pick per post.
+  formats?: CreatorOption[];
   allowExternalAuthors?: boolean;
   // True when the built-in "sponsored" tag exists; shows the disclosure
   // checkbox. The page checks the tag so a deleted tag just hides it.
@@ -28,6 +31,7 @@ export function SubmitClipForm({
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [creatorTagId, setCreatorTagId] = useState("");
+  const [formatTagId, setFormatTagId] = useState("");
   const [sponsored, setSponsored] = useState(false);
   const [state, setState] = useState<"idle" | "submitting">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +51,7 @@ export function SubmitClipForm({
         url,
         campaign_id: campaignId,
         ...(creatorTagId ? { creator_tag_id: creatorTagId } : {}),
+        ...(formatTagId ? { format_tag_id: formatTagId } : {}),
         ...(canMarkSponsored ? { sponsored } : {}),
       }),
     });
@@ -59,6 +64,7 @@ export function SubmitClipForm({
     setOk("Clip accepted. Tracking begins now.");
     setUrl("");
     setCreatorTagId("");
+    setFormatTagId("");
     setSponsored(false);
     router.refresh();
   }
@@ -99,6 +105,21 @@ export function SubmitClipForm({
             {creators.map((c) => (
               <option key={c.id} value={c.id} className="bg-bg text-text">
                 {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {formats.length > 0 && (
+          <select
+            value={formatTagId}
+            onChange={(e) => setFormatTagId(e.target.value)}
+            className="input-bare font-mono text-sm bg-transparent border border-border px-3 py-2 min-w-[180px]"
+            aria-label="Post format"
+          >
+            <option value="">format (optional)</option>
+            {formats.map((f) => (
+              <option key={f.id} value={f.id} className="bg-bg text-text">
+                {f.label}
               </option>
             ))}
           </select>
