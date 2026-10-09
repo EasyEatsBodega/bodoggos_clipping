@@ -162,6 +162,22 @@ export async function POST(req: Request) {
     }
   }
 
+  // Format (optional): which content format the post is — must be a real
+  // format tag when provided.
+  let formatTagId: string | null = null;
+  if (parsed.data.format_tag_id) {
+    const { data: formatTag } = await admin
+      .from("clip_tags")
+      .select("id")
+      .eq("id", parsed.data.format_tag_id)
+      .eq("kind", "format")
+      .maybeSingle();
+    if (!formatTag) {
+      return NextResponse.json({ error: "unknown format" }, { status: 400 });
+    }
+    formatTagId = formatTag.id;
+  }
+
   // Sponsored disclosure: resolve the built-in tag before inserting so a
   // stale form (tag deleted since the page loaded) fails loudly instead of
   // silently dropping something the clipper deliberately declared.
@@ -244,13 +260,14 @@ export async function POST(req: Request) {
     source: "twitterapi_io",
   });
 
-  // Attach the tags the clipper picked: creator attribution and/or the
-  // sponsored disclosure. assigned_by stays null — it references
+  // Attach the tags the clipper picked: creator attribution, format and/or
+  // the sponsored disclosure. assigned_by stays null — it references
   // admin_users and these came from the clipper.
   const tagRows: { clip_id: string; tag_id: string }[] = [];
   if (parsed.data.creator_tag_id && creatorTagIds.has(parsed.data.creator_tag_id)) {
     tagRows.push({ clip_id: clip.id, tag_id: parsed.data.creator_tag_id });
   }
+  if (formatTagId) tagRows.push({ clip_id: clip.id, tag_id: formatTagId });
   if (sponsoredTagId) tagRows.push({ clip_id: clip.id, tag_id: sponsoredTagId });
   if (tagRows.length > 0) {
     const { error: tagErr } = await admin.from("clip_tag_assignments").insert(tagRows);

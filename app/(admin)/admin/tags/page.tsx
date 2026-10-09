@@ -112,7 +112,9 @@ export default async function AdminTagsPage() {
                       ? "var(--accent)"
                       : t.kind === "partner"
                         ? "var(--partner)"
-                        : "var(--admin)";
+                        : t.kind === "format"
+                          ? "var(--format)"
+                          : "var(--admin)";
                   return (
                     <TR key={t.id}>
                       <TD className="font-mono">

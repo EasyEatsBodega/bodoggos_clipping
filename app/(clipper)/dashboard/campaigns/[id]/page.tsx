@@ -57,7 +57,8 @@ export default async function ClipperCampaignDetailPage({
 
   const open = isCampaignOpen(campaign);
 
-  const [{ data: clips }, spent, { data: creatorTags }, sponsoredTag] = await Promise.all([
+  const [{ data: clips }, spent, { data: creatorTags }, sponsoredTag, { data: formatTags }] =
+    await Promise.all([
     supabase
       .from("clips")
       .select("*")
@@ -76,6 +77,13 @@ export default async function ClipperCampaignDetailPage({
     // Built-in "sponsored" tag: present → the submit form offers the
     // disclosure checkbox and the clips list badges sponsored posts.
     getSponsoredTag(supabase),
+    // Content formats the clipper can pick from (optional per post).
+    supabase
+      .from("clip_tags")
+      .select("id, label")
+      .eq("kind", "format")
+      .order("sort_order", { ascending: true })
+      .order("label", { ascending: true }),
   ]);
 
   const sponsoredClipIds = sponsoredTag
@@ -254,6 +262,7 @@ export default async function ClipperCampaignDetailPage({
             campaignId={campaign.id}
             campaignName={campaign.name}
             creators={creatorTags ?? []}
+            formats={formatTags ?? []}
             allowExternalAuthors={campaign.allow_external_authors}
             canMarkSponsored={!!sponsoredTag}
             sponsoredBonusUsd={Number(campaign.sponsored_bonus_usd ?? 0)}
