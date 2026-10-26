@@ -10,11 +10,12 @@ const STATE_LABEL = {
   cleared: "cleared",
 } as const;
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const year = currentTaxYear();
+  const yearParam = new URL(req.url).searchParams.get("year");
+  const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentTaxYear();
   const taxRows = await getTaxComplianceRows(auth.admin, year);
 
   const rows = taxRows.map((r) => ({
@@ -22,6 +23,7 @@ export async function GET() {
     account_email: r.accountEmail,
     status: STATE_LABEL[r.state],
     [`earned_${year}`]: (r.earnedCents / 100).toFixed(2),
+    [`paid_${year}`]: (r.paidCents / 100).toFixed(2),
     legal_name: r.legalName ?? "",
     country: r.country ?? "",
     tax_form_email: r.taxEmail ?? "",
@@ -34,6 +36,7 @@ export async function GET() {
     "account_email",
     "status",
     `earned_${year}`,
+    `paid_${year}`,
     "legal_name",
     "country",
     "tax_form_email",
