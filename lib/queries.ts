@@ -59,31 +59,73 @@ export async function getTaxComplianceRows(
   supabase: SupabaseClient,
   year: number,
 ): Promise<TaxComplianceRow[]> {
-  const [{ data: clippers }, { data: clips }, { data: payouts }, { data: infos }] =
-    await Promise.all([
-      supabase.from("clippers").select("id, x_handle, email"),
-      supabase.from("clips").select("clipper_id, status, payout_amount, tracking_until"),
-      supabase.from("payouts").select("clipper_id, amount, paid_at"),
-      supabase.from("clipper_tax_info").select("*").eq("tax_year", year),
-    ]);
+  // Paged: these feed money totals, and an unpaged select silently stops at
+  // 1000 rows.
+  const [clippers, clips, payouts, infos] = await Promise.all([
+    fetchAllPages<{ id: string; x_handle: string; email: string }>((from, to) =>
+      supabase
+        .from("clippers")
+        .select("id, x_handle, email")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{
+      id: string;
+      clipper_id: string;
+      status: string;
+      payout_amount: string | null;
+      tracking_until: string | null;
+    }>((from, to) =>
+      supabase
+        .from("clips")
+        .select("id, clipper_id, status, payout_amount, tracking_until")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ id: string; clipper_id: string; amount: string; paid_at: string }>(
+      (from, to) =>
+        supabase
+          .from("payouts")
+          .select("id, clipper_id, amount, paid_at")
+          .order("id", { ascending: true })
+          .range(from, to),
+    ),
+    fetchAllPages<{
+      clipper_id: string;
+      legal_first_name: string | null;
+      legal_last_name: string | null;
+      country: string | null;
+      email: string | null;
+      submitted_at: string | null;
+      cleared_at: string | null;
+      requested_at: string | null;
+    }>((from, to) =>
+      supabase
+        .from("clipper_tax_info")
+        .select("*")
+        .eq("tax_year", year)
+        .order("clipper_id", { ascending: true })
+        .range(from, to),
+    ),
+  ]);
 
   const clipsByClipper = new Map<string, typeof clips>();
-  for (const c of clips ?? []) {
+  for (const c of clips) {
     const arr = clipsByClipper.get(c.clipper_id) ?? [];
     arr.push(c);
     clipsByClipper.set(c.clipper_id, arr);
   }
   const payoutsByClipper = new Map<string, typeof payouts>();
-  for (const p of payouts ?? []) {
+  for (const p of payouts) {
     const arr = payoutsByClipper.get(p.clipper_id) ?? [];
     arr.push(p);
     payoutsByClipper.set(p.clipper_id, arr);
   }
-  const infoByClipper = new Map<string, NonNullable<typeof infos>[number]>();
-  for (const i of infos ?? []) infoByClipper.set(i.clipper_id, i);
+  const infoByClipper = new Map<string, (typeof infos)[number]>();
+  for (const i of infos) infoByClipper.set(i.clipper_id, i);
 
   const rows: TaxComplianceRow[] = [];
-  for (const cl of clippers ?? []) {
+  for (const cl of clippers) {
     const info = infoByClipper.get(cl.id) ?? null;
     const earnedCents = earnedCentsInYear(clipsByClipper.get(cl.id) ?? [], year);
     const paidCents = paidCentsInYear(payoutsByClipper.get(cl.id) ?? [], year);
@@ -122,6 +164,118 @@ export async function getTaxComplianceRows(
       Math.max(b.earnedCents, b.paidCents) - Math.max(a.earnedCents, a.paidCents),
   );
   return rows;
+}
+
+export type PayoutLedgerRow = {
+  payoutId: string;
+  paidAt: string;
+  clipperId: string;
+  handle: string | null;
+  legalName: string | null;
+  country: string | null;
+  recipientEmail: string | null;
+  amount: string;
+  chain: string;
+  txHash: string | null;
+  txUrl: string | null;
+  note: string | null;
+};
+
+export function txExplorerUrl(chain: string, txHash: string | null): string | null {
+  if (!txHash) return null;
+  return chain.toLowerCase() === "solana" ? `https://solscan.io/tx/${txHash}` : null;
+}
+
+// Accountant-facing payout ledger: one row per recorded payment with the
+// recipient's identity (handle + legal name/country where tax info was
+// collected), the USD amount, and the on-chain reference. Ordered oldest
+// first, which is how bookkeepers reconcile. `year` filters to a calendar
+// year (UTC); null returns every payout. Also returns every year that has
+// at least one payout so callers can offer a year picker.
+export async function getPayoutLedger(
+  supabase: SupabaseClient,
+  year: number | null,
+): Promise<{ rows: PayoutLedgerRow[]; years: number[] }> {
+  const [payouts, clippers, taxInfos] = await Promise.all([
+    fetchAllPages<{
+      id: string;
+      clipper_id: string;
+      amount: string;
+      chain: string;
+      tx_hash: string | null;
+      paid_at: string;
+      note: string | null;
+    }>((from, to) =>
+      supabase
+        .from("payouts")
+        .select("id, clipper_id, amount, chain, tx_hash, paid_at, note")
+        .order("paid_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{ id: string; x_handle: string; email: string }>((from, to) =>
+      supabase
+        .from("clippers")
+        .select("id, x_handle, email")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPages<{
+      clipper_id: string;
+      tax_year: number;
+      legal_first_name: string;
+      legal_last_name: string;
+      country: string;
+      email: string | null;
+    }>((from, to) =>
+      supabase
+        .from("clipper_tax_info")
+        .select("clipper_id, tax_year, legal_first_name, legal_last_name, country, email")
+        .order("clipper_id", { ascending: true })
+        .order("tax_year", { ascending: true })
+        .range(from, to),
+    ),
+  ]);
+
+  const clipperOf = new Map(clippers.map((c) => [c.id, c]));
+  // Prefer the tax info filed for the payout's own year; fall back to the
+  // most recent year we have for that clipper.
+  const taxByClipperYear = new Map<string, (typeof taxInfos)[number]>();
+  const latestTaxByClipper = new Map<string, (typeof taxInfos)[number]>();
+  for (const t of taxInfos) {
+    taxByClipperYear.set(`${t.clipper_id}:${t.tax_year}`, t);
+    const cur = latestTaxByClipper.get(t.clipper_id);
+    if (!cur || t.tax_year > cur.tax_year) latestTaxByClipper.set(t.clipper_id, t);
+  }
+
+  const years = new Set<number>();
+  const rows: PayoutLedgerRow[] = [];
+  for (const p of payouts) {
+    const payoutYear = new Date(p.paid_at).getUTCFullYear();
+    years.add(payoutYear);
+    if (year != null && payoutYear !== year) continue;
+    const clipper = clipperOf.get(p.clipper_id);
+    const tax =
+      taxByClipperYear.get(`${p.clipper_id}:${payoutYear}`) ??
+      latestTaxByClipper.get(p.clipper_id) ??
+      null;
+    rows.push({
+      payoutId: p.id,
+      paidAt: p.paid_at,
+      clipperId: p.clipper_id,
+      handle: clipper?.x_handle ?? null,
+      legalName: tax ? `${tax.legal_first_name} ${tax.legal_last_name}` : null,
+      country: tax?.country ?? null,
+      recipientEmail: tax?.email || clipper?.email || null,
+      amount: p.amount,
+      chain: p.chain,
+      txHash: p.tx_hash,
+      txUrl: txExplorerUrl(p.chain, p.tx_hash),
+      note: p.note,
+    });
+  }
+
+  return { rows, years: [...years].sort((a, b) => b - a) };
 }
 
 // Returns whether a payout to this clipper must be blocked for tax compliance
