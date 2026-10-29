@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computePayoutAmount } from "./payout-calc";
+import { computePayoutAmount, effectiveSponsoredBonus } from "./payout-calc";
 import { getSponsoredTag } from "./queries";
 
 // Keeps a clip's money in step with its "sponsored" tag.
 //
-//   tagged   ⇒ flat_fee_snapshot includes the campaign's sponsored bonus and
-//              sponsored_bonus_snapshot records how much that was
+//   tagged   ⇒ flat_fee_snapshot includes the sponsored bonus (the clipper's
+//              override, else the campaign's) and sponsored_bonus_snapshot
+//              records how much that was
 //   untagged ⇒ neither
 //
 // Folding the bonus into flat_fee_snapshot means finalize, rolling owed,
@@ -17,7 +18,7 @@ import { getSponsoredTag } from "./queries";
 // recomputed so the bonus lands in earned / outstanding right away;
 // tracking clips pick it up at finalize through the snapshot. Snapshots
 // are immutable once taken: a tagged clip keeps the bonus it was tagged
-// with even if the campaign setting changes later.
+// with even if the campaign or clipper setting changes later.
 export async function syncSponsoredBonus(
   admin: SupabaseClient,
   clipId: string,
@@ -35,7 +36,7 @@ export async function syncSponsoredBonus(
     admin
       .from("clips")
       .select(
-        "id, campaign_id, status, impressions, final_impressions, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, sponsored_bonus_snapshot, botting_suspected",
+        "id, clipper_id, campaign_id, status, impressions, final_impressions, cpm_rate_snapshot, max_payout_snapshot, flat_fee_snapshot, min_views_snapshot, sponsored_bonus_snapshot, botting_suspected",
       )
       .eq("id", clipId)
       .maybeSingle(),
@@ -49,12 +50,22 @@ export async function syncSponsoredBonus(
   let nextBonus: number;
   if (tagged) {
     if (currentBonus > 0) return { changed: false, bonus: currentBonus };
-    const { data: campaign } = await admin
-      .from("campaigns")
-      .select("sponsored_bonus_usd")
-      .eq("id", clip.campaign_id)
-      .maybeSingle();
-    nextBonus = Number(campaign?.sponsored_bonus_usd ?? 0);
+    const [{ data: campaign }, { data: clipper }] = await Promise.all([
+      admin
+        .from("campaigns")
+        .select("sponsored_bonus_usd")
+        .eq("id", clip.campaign_id)
+        .maybeSingle(),
+      admin
+        .from("clippers")
+        .select("sponsored_bonus_override")
+        .eq("id", clip.clipper_id)
+        .maybeSingle(),
+    ]);
+    nextBonus = effectiveSponsoredBonus(
+      clipper?.sponsored_bonus_override,
+      campaign?.sponsored_bonus_usd,
+    );
     if (nextBonus <= 0) return { changed: false, bonus: 0 };
   } else {
     if (currentBonus <= 0) return { changed: false, bonus: 0 };

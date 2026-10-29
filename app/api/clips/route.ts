@@ -6,6 +6,7 @@ import { parseTweetUrl } from "@/lib/url-canonicalizer";
 import { getXProvider } from "@/lib/x-provider";
 import { getCampaignSpend, getSponsoredTag, isCampaignOpen } from "@/lib/queries";
 import { weekStartET, weekEndET } from "@/lib/week";
+import { effectiveSponsoredBonus } from "@/lib/payout-calc";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   const { data: clipper, error: clipperErr } = await supabase
     .from("clippers")
     .select(
-      "id, x_handle, banned, roster_active, flat_fee_per_clip, cpm_rate_override, max_payout_override",
+      "id, x_handle, banned, roster_active, flat_fee_per_clip, cpm_rate_override, max_payout_override, sponsored_bonus_override",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -208,11 +209,13 @@ export async function POST(req: Request) {
     }
     effectiveFlat = (weekClipCount ?? 0) === 0 ? Number(campaign.weekly_base_pay_usd) : 0;
   }
-  // The sponsored bonus (campaign setting, default $25) rides in the flat
-  // fee too, so finalize / owed / tax / budget count it with no special
-  // cases; sponsored_bonus_snapshot records the component so untagging
-  // later removes exactly this amount (see lib/sponsored.ts).
-  const sponsoredBonus = sponsoredTagId ? Number(campaign.sponsored_bonus_usd ?? 0) : 0;
+  // The sponsored bonus (clipper override, else campaign setting, default
+  // $25) rides in the flat fee too, so finalize / owed / tax / budget count
+  // it with no special cases; sponsored_bonus_snapshot records the component
+  // so untagging later removes exactly this amount (see lib/sponsored.ts).
+  const sponsoredBonus = sponsoredTagId
+    ? effectiveSponsoredBonus(clipper.sponsored_bonus_override, campaign.sponsored_bonus_usd)
+    : 0;
   const flatSnapshot = (Number(effectiveFlat) + sponsoredBonus).toFixed(2);
 
   const { data: clip, error: insertErr } = await admin

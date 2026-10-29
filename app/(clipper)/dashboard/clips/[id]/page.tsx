@@ -9,7 +9,7 @@ import { SponsoredToggle } from "@/components/clipper/SponsoredToggle";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSponsoredClipIds, getSponsoredTag } from "@/lib/queries";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
-import { computePayoutAmount } from "@/lib/payout-calc";
+import { computePayoutAmount, effectiveSponsoredBonus } from "@/lib/payout-calc";
 
 export const dynamic = "force-dynamic";
 
@@ -39,18 +39,25 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     ? (await getSponsoredClipIds(supabase, sponsoredTag.id, [clip.id])).has(clip.id)
     : false;
   // Bonus to show on the toggle: what this clip already carries, else what
-  // tagging it now would add (the campaign setting).
-  const { data: clipCampaign } = sponsoredTag
-    ? await supabase
-        .from("campaigns")
-        .select("sponsored_bonus_usd")
-        .eq("id", clip.campaign_id)
-        .maybeSingle()
-    : { data: null };
+  // tagging it now would add (the clipper's override, else the campaign's).
+  const [{ data: clipCampaign }, { data: me }] = sponsoredTag
+    ? await Promise.all([
+        supabase
+          .from("campaigns")
+          .select("sponsored_bonus_usd")
+          .eq("id", clip.campaign_id)
+          .maybeSingle(),
+        supabase
+          .from("clippers")
+          .select("sponsored_bonus_override")
+          .eq("id", user.id)
+          .maybeSingle(),
+      ])
+    : [{ data: null }, { data: null }];
   const sponsoredBonusUsd =
     Number(clip.sponsored_bonus_snapshot ?? 0) > 0
       ? Number(clip.sponsored_bonus_snapshot)
-      : Number(clipCampaign?.sponsored_bonus_usd ?? 0);
+      : effectiveSponsoredBonus(me?.sponsored_bonus_override, clipCampaign?.sponsored_bonus_usd);
 
   const points =
     snapshots?.map((s) => ({

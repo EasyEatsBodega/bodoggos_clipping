@@ -3,6 +3,7 @@ import {
   computePayoutAmount,
   computePayoutCents,
   computeRollingOwedCents,
+  effectiveSponsoredBonus,
   latestMarksByClipId,
   sumNumeric,
 } from "../payout-calc";
@@ -356,5 +357,26 @@ describe("sumNumeric", () => {
 
   it("ignores nulls", () => {
     expect(sumNumeric(["1.00", null, undefined, "2.50"])).toBe("3.50");
+  });
+});
+
+describe("effectiveSponsoredBonus", () => {
+  it("falls back to the campaign bonus when the clipper has no override", () => {
+    expect(effectiveSponsoredBonus(null, "25.00")).toBe(25);
+    expect(effectiveSponsoredBonus(undefined, 40)).toBe(40);
+  });
+
+  it("uses the clipper override over the campaign bonus", () => {
+    expect(effectiveSponsoredBonus("50.00", "25.00")).toBe(50);
+    expect(effectiveSponsoredBonus("10.00", "25.00")).toBe(10);
+  });
+
+  it("treats an override of 0 as no bonus, not as unset", () => {
+    expect(effectiveSponsoredBonus("0.00", "25.00")).toBe(0);
+    expect(effectiveSponsoredBonus(0, "25.00")).toBe(0);
+  });
+
+  it("returns 0 when neither is set", () => {
+    expect(effectiveSponsoredBonus(null, null)).toBe(0);
   });
 });

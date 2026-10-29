@@ -171,6 +171,8 @@ export const payOverridesSchema = z.object({
   flat_fee_per_clip: z.number().nonnegative().max(10000),
   cpm_rate_override: z.number().nonnegative().max(1000).nullable(),
   max_payout_override: z.number().nonnegative().max(100000).nullable(),
+  // null = use each campaign's sponsored_bonus_usd.
+  sponsored_bonus_override: z.number().nonnegative().max(10_000).nullable().optional(),
   apply_to_existing: z.boolean().optional(),
 });
 

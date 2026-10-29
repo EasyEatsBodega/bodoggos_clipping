@@ -13,6 +13,7 @@ export type Clipper = {
   flat_fee_per_clip: string;
   cpm_rate_override: string | null;
   max_payout_override: string | null;
+  sponsored_bonus_override: string | null;
 };
 
 export type Clip = {

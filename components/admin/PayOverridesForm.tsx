@@ -17,10 +17,12 @@ export function PayOverridesForm({
     flat_fee_per_clip: string;
     cpm_rate_override: string | null;
     max_payout_override: string | null;
+    sponsored_bonus_override: string | null;
   };
   campaignDefaults: {
     cpm_rate: string;
     max_payout_per_clip: string;
+    sponsored_bonus_usd: string;
   };
   existingClipCount: number;
   completedClipCount: number;
@@ -32,6 +34,11 @@ export function PayOverridesForm({
   );
   const [cap, setCap] = useState(
     initial.max_payout_override != null ? Number(initial.max_payout_override).toFixed(2) : "",
+  );
+  const [sponsored, setSponsored] = useState(
+    initial.sponsored_bonus_override != null
+      ? Number(initial.sponsored_bonus_override).toFixed(2)
+      : "",
   );
   const [applyToExisting, setApplyToExisting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,6 +72,7 @@ export function PayOverridesForm({
         flat_fee_per_clip: Number(flat) || 0,
         cpm_rate_override: cpm.trim() === "" ? null : Number(cpm),
         max_payout_override: cap.trim() === "" ? null : Number(cap),
+        sponsored_bonus_override: sponsored.trim() === "" ? null : Number(sponsored),
         apply_to_existing: applyToExisting,
       }),
     });
@@ -91,6 +99,8 @@ export function PayOverridesForm({
   const effectiveCpm = cpm.trim() === "" ? Number(campaignDefaults.cpm_rate) : Number(cpm);
   const effectiveCap = cap.trim() === "" ? Number(campaignDefaults.max_payout_per_clip) : Number(cap);
   const effectiveFlat = Number(flat) || 0;
+  const effectiveSponsored =
+    sponsored.trim() === "" ? Number(campaignDefaults.sponsored_bonus_usd) : Number(sponsored);
 
   return (
     <form
@@ -103,7 +113,7 @@ export function PayOverridesForm({
           admin only · applies to FUTURE clips submitted after save
         </span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Input
           id="flat"
           label="flat fee per clip (usd)"
@@ -134,11 +144,24 @@ export function PayOverridesForm({
           onChange={(e) => setCap(e.target.value)}
           placeholder="leave blank for default"
         />
+        <Input
+          id="sponsored-override"
+          label={`sponsored bonus / post (default $${Number(campaignDefaults.sponsored_bonus_usd).toFixed(2)})`}
+          type="number"
+          step="0.01"
+          min="0"
+          value={sponsored}
+          onChange={(e) => setSponsored(e.target.value)}
+          placeholder="leave blank for default"
+        />
       </div>
       <p className="font-mono text-[10px] text-text-2">
         <span className="text-text-3">// effective deal: </span>
         ${effectiveFlat.toFixed(2)} per clip + ${effectiveCpm.toFixed(2)} CPM, capped at $
         {effectiveCap.toFixed(2)}
+        {effectiveSponsored > 0
+          ? ` · +$${effectiveSponsored.toFixed(2)} per sponsored post`
+          : " · no sponsored bonus"}
       </p>
       <label className="flex items-start gap-2 font-mono text-[11px] text-text-2 cursor-pointer">
         <input
