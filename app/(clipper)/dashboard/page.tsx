@@ -84,7 +84,8 @@ export default async function DashboardPage() {
   const hasCustomDeal =
     Number(clipper.flat_fee_per_clip ?? 0) > 0 ||
     clipper.cpm_rate_override != null ||
-    clipper.max_payout_override != null;
+    clipper.max_payout_override != null ||
+    clipper.sponsored_bonus_override != null;
 
   return (
     <div className="min-h-screen flex flex-col">

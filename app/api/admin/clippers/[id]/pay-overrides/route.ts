@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { payOverridesSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { computePayoutAmount } from "@/lib/payout-calc";
+import { computePayoutAmount, effectiveSponsoredBonus } from "@/lib/payout-calc";
+import { getSponsoredClipIds, getSponsoredTag } from "@/lib/queries";
 
 export async function POST(
   req: Request,
@@ -23,6 +24,10 @@ export async function POST(
       flat_fee_per_clip: parsed.data.flat_fee_per_clip,
       cpm_rate_override: parsed.data.cpm_rate_override,
       max_payout_override: parsed.data.max_payout_override,
+      // Omitted = leave the clipper's sponsored bonus deal as it is.
+      ...(parsed.data.sponsored_bonus_override !== undefined
+        ? { sponsored_bonus_override: parsed.data.sponsored_bonus_override }
+        : {}),
     })
     .eq("id", id);
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
@@ -51,12 +56,17 @@ export async function POST(
   );
   const campaignDefaults = new Map<
     string,
-    { cpm_rate: string; max_payout_per_clip: string; weekly_base_pay_usd: string | null }
+    {
+      cpm_rate: string;
+      max_payout_per_clip: string;
+      weekly_base_pay_usd: string | null;
+      sponsored_bonus_usd: string;
+    }
   >();
   if (campaignIds.length > 0) {
     const { data: camps, error: campsErr } = await auth.admin
       .from("campaigns")
-      .select("id, cpm_rate, max_payout_per_clip, weekly_base_pay_usd")
+      .select("id, cpm_rate, max_payout_per_clip, weekly_base_pay_usd, sponsored_bonus_usd")
       .in("id", campaignIds);
     if (campsErr) return NextResponse.json({ error: campsErr.message }, { status: 500 });
     for (const c of camps ?? []) {
@@ -64,9 +74,23 @@ export async function POST(
         cpm_rate: c.cpm_rate,
         max_payout_per_clip: c.max_payout_per_clip,
         weekly_base_pay_usd: c.weekly_base_pay_usd ?? null,
+        sponsored_bonus_usd: c.sponsored_bonus_usd,
       });
     }
   }
+
+  // When the sponsored bonus deal is part of this save, clips tagged
+  // sponsored get re-priced to it (override ?? their campaign's bonus), the
+  // same way cpm / cap reset to override ?? campaign default above.
+  const repriceSponsored = parsed.data.sponsored_bonus_override !== undefined;
+  const sponsoredTag = repriceSponsored ? await getSponsoredTag(auth.admin) : null;
+  const sponsoredClipIds = sponsoredTag
+    ? await getSponsoredClipIds(
+        auth.admin,
+        sponsoredTag.id,
+        (clips ?? []).map((c) => c.id),
+      )
+    : new Set<string>();
 
   let backfilled = 0;
   let recomputed = 0;
@@ -78,18 +102,26 @@ export async function POST(
     const effectiveMax = parsed.data.max_payout_override ?? campMax;
     // Weekly-base campaigns carry the weekly base in flat_fee_snapshot (on
     // the first clip of each week), so the per-clipper flat doesn't apply
-    // there — keep what's on the clip. Elsewhere, re-add the sponsored
-    // bonus the clip carries so the override doesn't silently drop it.
-    const sponsoredBonus = Number(c.sponsored_bonus_snapshot ?? 0);
+    // there — keep the base and only swap the sponsored component.
+    // Elsewhere, re-add the sponsored bonus so the override doesn't
+    // silently drop it.
+    const currentBonus = Number(c.sponsored_bonus_snapshot ?? 0);
+    const sponsoredBonus = sponsoredClipIds.has(c.id)
+      ? effectiveSponsoredBonus(
+          parsed.data.sponsored_bonus_override,
+          defaults?.sponsored_bonus_usd,
+        )
+      : currentBonus;
     const effectiveFlat =
       defaults?.weekly_base_pay_usd != null
-        ? Number(c.flat_fee_snapshot ?? 0)
+        ? Math.max(0, Number(c.flat_fee_snapshot ?? 0) - currentBonus + sponsoredBonus)
         : parsed.data.flat_fee_per_clip + sponsoredBonus;
 
     const update: Record<string, unknown> = {
       cpm_rate_snapshot: effectiveCpm,
       max_payout_snapshot: effectiveMax,
       flat_fee_snapshot: effectiveFlat,
+      sponsored_bonus_snapshot: sponsoredBonus.toFixed(2),
     };
     if (c.status === "completed") {
       const finalImps = Number(c.final_impressions ?? c.impressions ?? 0);

@@ -13,6 +13,7 @@ import {
   isCampaignOpen,
 } from "@/lib/queries";
 import { fmtUsd } from "@/lib/format";
+import { effectiveSponsoredBonus } from "@/lib/payout-calc";
 import type { Campaign, Clip } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function ClipperCampaignDetailPage({
 
   const { data: clipper } = await supabase
     .from("clippers")
-    .select("id, x_handle")
+    .select("id, x_handle, sponsored_bonus_override")
     .eq("id", user.id)
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
@@ -56,6 +57,12 @@ export default async function ClipperCampaignDetailPage({
   if (!campaign.active && !enrollment) notFound();
 
   const open = isCampaignOpen(campaign);
+  // What a sponsored post earns this clipper here: their own deal, if an
+  // admin set one, else the campaign setting.
+  const sponsoredBonusUsd = effectiveSponsoredBonus(
+    clipper.sponsored_bonus_override,
+    campaign.sponsored_bonus_usd,
+  );
 
   const [{ data: clips }, spent, { data: creatorTags }, sponsoredTag] = await Promise.all([
     supabase
@@ -153,12 +160,12 @@ export default async function ClipperCampaignDetailPage({
                 <div>{fmtUsd(campaign.max_payout_per_clip)}</div>
               </div>
             )}
-            {sponsoredTag && Number(campaign.sponsored_bonus_usd ?? 0) > 0 && (
+            {sponsoredTag && sponsoredBonusUsd > 0 && (
               <div>
                 <div className="text-text-3 text-[10px] uppercase tracking-widest">
                   sponsored bonus
                 </div>
-                <div>+{fmtUsd(campaign.sponsored_bonus_usd)} / post</div>
+                <div>+{fmtUsd(sponsoredBonusUsd)} / post</div>
               </div>
             )}
             <div>
@@ -256,7 +263,7 @@ export default async function ClipperCampaignDetailPage({
             creators={creatorTags ?? []}
             allowExternalAuthors={campaign.allow_external_authors}
             canMarkSponsored={!!sponsoredTag}
-            sponsoredBonusUsd={Number(campaign.sponsored_bonus_usd ?? 0)}
+            sponsoredBonusUsd={sponsoredBonusUsd}
           />
         )}
 

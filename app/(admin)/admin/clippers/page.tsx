@@ -103,7 +103,7 @@ export default async function AdminClippersPage({
     if (statusFilter === "inactive") qb = qb.eq("roster_active", false);
     if (onlyCustom) {
       qb = qb.or(
-        "flat_fee_per_clip.gt.0,cpm_rate_override.not.is.null,max_payout_override.not.is.null",
+        "flat_fee_per_clip.gt.0,cpm_rate_override.not.is.null,max_payout_override.not.is.null,sponsored_bonus_override.not.is.null",
       );
     }
     return qb.order("id", { ascending: true }).range(from, to);
@@ -122,6 +122,7 @@ export default async function AdminClippersPage({
       flat_fee_per_clip: string;
       cpm_rate_override: string | null;
       max_payout_override: string | null;
+      sponsored_bonus_override: string | null;
     }>(buildClippers),
     fetchAllPages<{
       id: string;
@@ -291,7 +292,8 @@ export default async function AdminClippersPage({
         hasOverride:
           Number(c.flat_fee_per_clip ?? 0) > 0 ||
           c.cpm_rate_override != null ||
-          c.max_payout_override != null,
+          c.max_payout_override != null ||
+          c.sponsored_bonus_override != null,
       };
     });
 
