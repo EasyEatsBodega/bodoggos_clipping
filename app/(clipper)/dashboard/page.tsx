@@ -36,7 +36,7 @@ export default async function DashboardPage() {
   const [
     { data: clips },
     kpis,
-    campaigns,
+    activeCampaigns,
     { data: enrollments },
     { data: taxInfo },
     sponsoredTag,
@@ -80,6 +80,8 @@ export default async function DashboardPage() {
   );
 
   const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
+  // Invite-only campaigns only show up for clippers an admin added.
+  const campaigns = activeCampaigns.filter((c) => !c.invite_only || enrolledIds.has(c.id));
   const enrolledCampaigns = campaigns.filter((c) => enrolledIds.has(c.id));
   const unenrolledCount = campaigns.length - enrolledCampaigns.length;
 

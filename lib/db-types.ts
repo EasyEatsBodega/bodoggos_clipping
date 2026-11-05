@@ -101,6 +101,9 @@ export type Campaign = {
   // Allow submitting posts authored by a different X account than the
   // clipper's linked/alt handles (ghostwriting).
   allow_external_authors: boolean;
+  // Clippers can't self-enroll; an admin adds them from the campaign page.
+  // Hidden from clippers who aren't enrolled.
+  invite_only: boolean;
 };
 
 export type CampaignEnrollment = {

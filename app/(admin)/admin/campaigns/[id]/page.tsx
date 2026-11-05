@@ -163,7 +163,10 @@ export default async function EditCampaignPage({
                     : "draft"}
               </span>
             </div>
-            <p className="font-mono text-xs text-text-3">slug: {campaign.slug}</p>
+            <p className="font-mono text-xs text-text-3">
+              slug: {campaign.slug}
+              {campaign.invite_only && <span className="text-admin"> · invite only</span>}
+            </p>
           </div>
           <PublishCampaignButton campaignId={campaign.id} active={campaign.active} />
         </div>

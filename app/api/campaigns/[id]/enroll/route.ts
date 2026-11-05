@@ -25,10 +25,16 @@ export async function POST(
   const admin = createSupabaseAdminClient();
   const { data: campaign } = await admin
     .from("campaigns")
-    .select("id, active, starts_at, ends_at")
+    .select("id, active, starts_at, ends_at, invite_only")
     .eq("id", id)
     .maybeSingle();
   if (!campaign) return NextResponse.json({ error: "campaign not found" }, { status: 404 });
+  if (campaign.invite_only) {
+    return NextResponse.json(
+      { error: "this campaign is invite only — an admin has to add you" },
+      { status: 403 },
+    );
+  }
   if (!isCampaignOpen(campaign)) {
     return NextResponse.json({ error: "this campaign is not currently accepting clippers" }, { status: 400 });
   }

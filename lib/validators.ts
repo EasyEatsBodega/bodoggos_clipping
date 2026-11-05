@@ -216,6 +216,7 @@ const campaignConfigBase = z.object({
   // Flat bonus per clip the clipper tags "sponsored" (0 = disclosure only).
   sponsored_bonus_usd: z.number().nonnegative().max(10_000).optional(),
   allow_external_authors: z.boolean().optional(),
+  invite_only: z.boolean().optional(),
 });
 
 // A per-clip campaign with no weekly base needs a real cpm rate, otherwise

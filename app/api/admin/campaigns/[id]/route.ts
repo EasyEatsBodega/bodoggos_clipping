@@ -38,6 +38,7 @@ export async function PATCH(
         ? { sponsored_bonus_usd: parsed.data.sponsored_bonus_usd.toFixed(2) }
         : {}),
       allow_external_authors: parsed.data.allow_external_authors ?? false,
+      invite_only: parsed.data.invite_only ?? false,
     })
     .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

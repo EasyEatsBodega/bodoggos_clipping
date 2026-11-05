@@ -33,6 +33,7 @@ export async function POST(req: Request) {
           : null,
       sponsored_bonus_usd: (parsed.data.sponsored_bonus_usd ?? 25).toFixed(2),
       allow_external_authors: parsed.data.allow_external_authors ?? false,
+      invite_only: parsed.data.invite_only ?? false,
     })
     .select()
     .single();

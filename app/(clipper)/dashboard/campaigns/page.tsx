@@ -25,7 +25,7 @@ export default async function ClipperCampaignsPage() {
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
 
-  const campaigns = (await getActiveCampaigns(supabase)) as Campaign[];
+  const activeCampaigns = (await getActiveCampaigns(supabase)) as Campaign[];
   const [{ data: enrollments }, { data: myRates }] = await Promise.all([
     supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
     // Per-campaign rates an admin set for this clipper (RLS: own rows).
@@ -36,6 +36,8 @@ export default async function ClipperCampaignsPage() {
   ]);
   const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
   const ratesByCampaign = new Map((myRates ?? []).map((r) => [r.campaign_id, r]));
+  // Invite-only campaigns only show up for clippers an admin added.
+  const campaigns = activeCampaigns.filter((c) => !c.invite_only || enrolledIds.has(c.id));
 
   const spendByCampaign = new Map<string, number>(
     await Promise.all(

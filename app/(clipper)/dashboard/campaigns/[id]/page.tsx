@@ -66,6 +66,8 @@ export default async function ClipperCampaignDetailPage({
   // unpublished after they joined) still gets the page so they see the
   // closed banner — otherwise it would look like the campaign vanished.
   if (!campaign.active && !enrollment) notFound();
+  // Invite-only campaigns are only visible to the clippers an admin added.
+  if (campaign.invite_only && !enrollment) notFound();
 
   const open = isCampaignOpen(campaign);
   // What this clipper earns here: their rate in this campaign, else their
