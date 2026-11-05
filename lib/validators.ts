@@ -171,7 +171,23 @@ export const payOverridesSchema = z.object({
   flat_fee_per_clip: z.number().nonnegative().max(10000),
   cpm_rate_override: z.number().nonnegative().max(1000).nullable(),
   max_payout_override: z.number().nonnegative().max(100000).nullable(),
+  // null = use each campaign's sponsored_bonus_usd.
+  sponsored_bonus_override: z.number().nonnegative().max(10_000).nullable().optional(),
   apply_to_existing: z.boolean().optional(),
+});
+
+// One clipper's rates inside one campaign (campaign_clipper_rates).
+// null = no campaign-specific rate; falls back to the clipper-wide override
+// and then the campaign default.
+export const campaignClipperRatesSchema = z.object({
+  weekly_base_pay_usd: z.number().nonnegative().max(100_000).nullable(),
+  cpm_rate: z.number().nonnegative().max(1000).nullable(),
+  max_payout_per_clip: z.number().nonnegative().max(100_000).nullable(),
+  sponsored_bonus_usd: z.number().nonnegative().max(10_000).nullable(),
+});
+
+export const addCampaignClipperSchema = z.object({
+  clipper_id: z.string().uuid(),
 });
 
 const isoDateString = z.string().datetime({ offset: true });
@@ -200,6 +216,7 @@ const campaignConfigBase = z.object({
   // Flat bonus per clip the clipper tags "sponsored" (0 = disclosure only).
   sponsored_bonus_usd: z.number().nonnegative().max(10_000).optional(),
   allow_external_authors: z.boolean().optional(),
+  invite_only: z.boolean().optional(),
 });
 
 // A per-clip campaign with no weekly base needs a real cpm rate, otherwise

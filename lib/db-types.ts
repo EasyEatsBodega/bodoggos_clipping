@@ -13,6 +13,7 @@ export type Clipper = {
   flat_fee_per_clip: string;
   cpm_rate_override: string | null;
   max_payout_override: string | null;
+  sponsored_bonus_override: string | null;
 };
 
 export type Clip = {
@@ -100,6 +101,9 @@ export type Campaign = {
   // Allow submitting posts authored by a different X account than the
   // clipper's linked/alt handles (ghostwriting).
   allow_external_authors: boolean;
+  // Clippers can't self-enroll; an admin adds them from the campaign page.
+  // Hidden from clippers who aren't enrolled.
+  invite_only: boolean;
 };
 
 export type CampaignEnrollment = {

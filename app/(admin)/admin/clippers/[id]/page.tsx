@@ -63,7 +63,7 @@ export default async function AdminClipperDetailPage({
     // applies globally to this clipper regardless of which campaign.
     admin
       .from("campaigns")
-      .select("cpm_rate, max_payout_per_clip")
+      .select("cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
       .eq("active", true)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -211,10 +211,12 @@ export default async function AdminClipperDetailPage({
               flat_fee_per_clip: clipper.flat_fee_per_clip ?? "0",
               cpm_rate_override: clipper.cpm_rate_override,
               max_payout_override: clipper.max_payout_override,
+              sponsored_bonus_override: clipper.sponsored_bonus_override ?? null,
             }}
             campaignDefaults={{
               cpm_rate: campaign.cpm_rate,
               max_payout_per_clip: campaign.max_payout_per_clip,
+              sponsored_bonus_usd: campaign.sponsored_bonus_usd,
             }}
             existingClipCount={clips?.length ?? 0}
             completedClipCount={(clips ?? []).filter((c) => c.status === "completed").length}

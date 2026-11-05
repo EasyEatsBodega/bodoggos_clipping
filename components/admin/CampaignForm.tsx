@@ -53,6 +53,7 @@ export function CampaignForm(props: Props) {
     sponsored_bonus_usd: c ? Number(c.sponsored_bonus_usd ?? 25) : 25,
     min_views: c?.min_views != null ? Number(c.min_views) : "",
     allow_external_authors: c?.allow_external_authors ?? false,
+    invite_only: c?.invite_only ?? false,
     active: c?.active ?? false,
     starts_at: toLocalInput(c?.starts_at ?? null),
     ends_at: toLocalInput(c?.ends_at ?? null),
@@ -82,6 +83,7 @@ export function CampaignForm(props: Props) {
       weekly_base_pay_usd:
         weekly && form.weekly_base_pay_usd !== "" ? Number(form.weekly_base_pay_usd) : null,
       allow_external_authors: form.allow_external_authors,
+      invite_only: form.invite_only,
       active: form.active,
       description: form.description ? form.description : null,
       brief_url: form.brief_url ? form.brief_url : null,
@@ -320,6 +322,21 @@ export function CampaignForm(props: Props) {
           <span className="text-text-3">
             clippers can submit posts published on any X account, not just their linked
             handle (e.g. posts they wrote that went out on someone else&apos;s account)
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 font-mono text-xs">
+        <input
+          type="checkbox"
+          className="mt-[2px]"
+          checked={form.invite_only}
+          onChange={(e) => setForm({ ...form, invite_only: e.target.checked })}
+        />
+        <span className="flex flex-col gap-0.5">
+          <span>invite only — admins add clippers</span>
+          <span className="text-text-3">
+            clippers can&apos;t enroll themselves and won&apos;t see this campaign unless
+            you add them from the clippers list on this page
           </span>
         </span>
       </label>

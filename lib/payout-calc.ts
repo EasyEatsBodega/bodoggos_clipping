@@ -12,14 +12,26 @@
 // cases here. A cpm rate of 0 in those campaigns means impressions are
 // tracked but earn nothing on top of the base.
 //
-// The sponsored-post bonus (campaigns.sponsored_bonus_usd) is folded into
-// the same flat fee when a clip carries the "sponsored" tag; the clip's
+// The sponsored-post bonus (clippers.sponsored_bonus_override, else
+// campaigns.sponsored_bonus_usd — see effectiveSponsoredBonus) is folded
+// into the same flat fee when a clip carries the "sponsored" tag; the clip's
 // sponsored_bonus_snapshot records that component (lib/sponsored.ts).
 //
 // minViews is a per-campaign eligibility floor: a clip below it earns
 // nothing at all (not even the flat fee) until it crosses the threshold.
 // Once eligible, CPM applies from the first view — the floor is a gate,
 // not a deductible. minViews <= 0 (the default) means no floor.
+// Bonus a sponsored post earns: the clipper's own override when an admin set
+// one (0 included — "no bonus for this clipper"), else the campaign setting.
+export function effectiveSponsoredBonus(
+  clipperOverride: number | string | null | undefined,
+  campaignBonus: number | string | null | undefined,
+): number {
+  const raw = clipperOverride ?? campaignBonus ?? 0;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export function computePayoutCents(
   impressions: number,
   cpmRate: number | string,

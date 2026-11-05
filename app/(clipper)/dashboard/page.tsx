@@ -15,6 +15,7 @@ import { fmtInt, fmtUsd } from "@/lib/format";
 import { TaxComplianceNotice } from "@/components/clipper/TaxComplianceNotice";
 import { computeTaxStatus, currentTaxYear, earnedCentsInYear } from "@/lib/tax-compliance";
 import type { Campaign, Clip } from "@/lib/db-types";
+import { resolveClipperPay } from "@/lib/campaign-rates";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +36,11 @@ export default async function DashboardPage() {
   const [
     { data: clips },
     kpis,
-    campaigns,
+    activeCampaigns,
     { data: enrollments },
     { data: taxInfo },
     sponsoredTag,
+    { data: myRates },
   ] = await Promise.all([
       supabase
         .from("clips")
@@ -55,7 +57,13 @@ export default async function DashboardPage() {
         .eq("tax_year", taxYear)
         .maybeSingle(),
       getSponsoredTag(supabase),
+      // Per-campaign rates an admin set for this clipper (RLS: own rows).
+      supabase
+        .from("campaign_clipper_rates")
+        .select("campaign_id, weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+        .eq("clipper_id", user.id),
     ]);
+  const ratesByCampaign = new Map((myRates ?? []).map((r) => [r.campaign_id, r]));
 
   const sponsoredClipIds = sponsoredTag
     ? await getSponsoredClipIds(
@@ -72,6 +80,8 @@ export default async function DashboardPage() {
   );
 
   const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
+  // Invite-only campaigns only show up for clippers an admin added.
+  const campaigns = activeCampaigns.filter((c) => !c.invite_only || enrolledIds.has(c.id));
   const enrolledCampaigns = campaigns.filter((c) => enrolledIds.has(c.id));
   const unenrolledCount = campaigns.length - enrolledCampaigns.length;
 
@@ -84,7 +94,8 @@ export default async function DashboardPage() {
   const hasCustomDeal =
     Number(clipper.flat_fee_per_clip ?? 0) > 0 ||
     clipper.cpm_rate_override != null ||
-    clipper.max_payout_override != null;
+    clipper.max_payout_override != null ||
+    clipper.sponsored_bonus_override != null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -193,19 +204,23 @@ export default async function DashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {enrolledCampaigns.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/dashboard/campaigns/${c.id}` as never}
-                  className="border border-border hover:border-accent p-4 flex flex-col gap-1 transition-colors"
-                >
-                  <span className="font-mono text-sm">{c.name}</span>
-                  <span className="font-mono text-[11px] text-text-3">
-                    {fmtUsd(c.cpm_rate)} cpm · cap {fmtUsd(c.max_payout_per_clip)} ·{" "}
-                    {c.tracking_days}d tracking
-                  </span>
-                </Link>
-              ))}
+              {enrolledCampaigns.map((c) => {
+                const pay = resolveClipperPay(c, clipper, ratesByCampaign.get(c.id));
+                return (
+                  <Link
+                    key={c.id}
+                    href={`/dashboard/campaigns/${c.id}` as never}
+                    className="border border-border hover:border-accent p-4 flex flex-col gap-1 transition-colors"
+                  >
+                    <span className="font-mono text-sm">{c.name}</span>
+                    <span className="font-mono text-[11px] text-text-3">
+                      {pay.weeklyBasePay != null && <>{fmtUsd(pay.weeklyBasePay)}/wk base · </>}
+                      {fmtUsd(pay.cpmRate)} cpm · cap {fmtUsd(pay.maxPayoutPerClip)} ·{" "}
+                      {c.tracking_days}d tracking
+                    </span>
+                  </Link>
+                );
+              })}
               {unenrolledCount > 0 && (
                 <Link
                   href={"/dashboard/campaigns" as never}
