@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computePayoutAmount, effectiveSponsoredBonus } from "./payout-calc";
+import { computePayoutAmount } from "./payout-calc";
+import { resolveClipperPay } from "./campaign-rates";
 import { getSponsoredTag } from "./queries";
 
 // Keeps a clip's money in step with its "sponsored" tag.
 //
-//   tagged   ⇒ flat_fee_snapshot includes the sponsored bonus (the clipper's
+//   tagged   ⇒ flat_fee_snapshot includes the sponsored bonus (this
+//              clipper's rate in this campaign, else their clipper-wide
 //              override, else the campaign's) and sponsored_bonus_snapshot
 //              records how much that was
 //   untagged ⇒ neither
@@ -50,10 +52,10 @@ export async function syncSponsoredBonus(
   let nextBonus: number;
   if (tagged) {
     if (currentBonus > 0) return { changed: false, bonus: currentBonus };
-    const [{ data: campaign }, { data: clipper }] = await Promise.all([
+    const [{ data: campaign }, { data: clipper }, { data: rates }] = await Promise.all([
       admin
         .from("campaigns")
-        .select("sponsored_bonus_usd")
+        .select("cpm_rate, max_payout_per_clip, weekly_base_pay_usd, sponsored_bonus_usd")
         .eq("id", clip.campaign_id)
         .maybeSingle(),
       admin
@@ -61,11 +63,14 @@ export async function syncSponsoredBonus(
         .select("sponsored_bonus_override")
         .eq("id", clip.clipper_id)
         .maybeSingle(),
+      admin
+        .from("campaign_clipper_rates")
+        .select("weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+        .eq("campaign_id", clip.campaign_id)
+        .eq("clipper_id", clip.clipper_id)
+        .maybeSingle(),
     ]);
-    nextBonus = effectiveSponsoredBonus(
-      clipper?.sponsored_bonus_override,
-      campaign?.sponsored_bonus_usd,
-    );
+    nextBonus = campaign ? resolveClipperPay(campaign, clipper, rates).sponsoredBonus : 0;
     if (nextBonus <= 0) return { changed: false, bonus: 0 };
   } else {
     if (currentBonus <= 0) return { changed: false, bonus: 0 };

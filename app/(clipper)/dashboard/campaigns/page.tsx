@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getActiveCampaigns, getCampaignSpend } from "@/lib/queries";
 import { fmtUsd } from "@/lib/format";
 import type { Campaign } from "@/lib/db-types";
+import { resolveClipperPay } from "@/lib/campaign-rates";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +18,24 @@ export default async function ClipperCampaignsPage() {
 
   const { data: clipper } = await supabase
     .from("clippers")
-    .select("id, x_handle")
+    .select(
+      "id, x_handle, flat_fee_per_clip, cpm_rate_override, max_payout_override, sponsored_bonus_override",
+    )
     .eq("id", user.id)
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
 
   const campaigns = (await getActiveCampaigns(supabase)) as Campaign[];
-  const { data: enrollments } = await supabase
-    .from("campaign_enrollments")
-    .select("campaign_id")
-    .eq("clipper_id", user.id);
+  const [{ data: enrollments }, { data: myRates }] = await Promise.all([
+    supabase.from("campaign_enrollments").select("campaign_id").eq("clipper_id", user.id),
+    // Per-campaign rates an admin set for this clipper (RLS: own rows).
+    supabase
+      .from("campaign_clipper_rates")
+      .select("campaign_id, weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+      .eq("clipper_id", user.id),
+  ]);
   const enrolledIds = new Set((enrollments ?? []).map((e) => e.campaign_id));
+  const ratesByCampaign = new Map((myRates ?? []).map((r) => [r.campaign_id, r]));
 
   const spendByCampaign = new Map<string, number>(
     await Promise.all(
@@ -63,6 +71,8 @@ export default async function ClipperCampaignsPage() {
               const spent = spendByCampaign.get(c.id) ?? 0;
               const budget = c.budget_usd != null ? Number(c.budget_usd) : null;
               const remaining = budget != null ? Math.max(0, budget - spent) : null;
+              // Card shows what THIS clipper earns (their own rates, if set).
+              const pay = resolveClipperPay(c, clipper, ratesByCampaign.get(c.id));
               return (
                 <Link
                   key={c.id}
@@ -83,30 +93,30 @@ export default async function ClipperCampaignsPage() {
                     <p className="font-mono text-xs text-text-2 line-clamp-3">{c.description}</p>
                   )}
                   <div className="grid grid-cols-3 gap-3 font-mono text-[11px] text-text-2">
-                    {c.weekly_base_pay_usd != null ? (
+                    {pay.weeklyBasePay != null ? (
                       <div>
                         <div className="text-text-3 text-[10px] uppercase tracking-widest">
                           base /wk
                         </div>
-                        <div>{fmtUsd(c.weekly_base_pay_usd)}</div>
+                        <div>{fmtUsd(pay.weeklyBasePay)}</div>
                       </div>
                     ) : (
                       <div>
                         <div className="text-text-3 text-[10px] uppercase tracking-widest">cpm</div>
-                        <div>{fmtUsd(c.cpm_rate)}</div>
+                        <div>{fmtUsd(pay.cpmRate)}</div>
                       </div>
                     )}
-                    {c.weekly_base_pay_usd != null ? (
+                    {pay.weeklyBasePay != null ? (
                       <div>
                         <div className="text-text-3 text-[10px] uppercase tracking-widest">
                           cpm bonus
                         </div>
-                        <div>{Number(c.cpm_rate) > 0 ? fmtUsd(c.cpm_rate) : "—"}</div>
+                        <div>{pay.cpmRate > 0 ? fmtUsd(pay.cpmRate) : "—"}</div>
                       </div>
                     ) : (
                       <div>
                         <div className="text-text-3 text-[10px] uppercase tracking-widest">cap</div>
-                        <div>{fmtUsd(c.max_payout_per_clip)}</div>
+                        <div>{fmtUsd(pay.maxPayoutPerClip)}</div>
                       </div>
                     )}
                     <div>

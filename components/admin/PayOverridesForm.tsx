@@ -113,6 +113,10 @@ export function PayOverridesForm({
           admin only · applies to FUTURE clips submitted after save
         </span>
       </div>
+      <p className="font-mono text-[10px] text-text-3">
+        account-wide deal for every campaign. rates set for this clipper on a
+        campaign page win over these inside that campaign.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Input
           id="flat"

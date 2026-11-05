@@ -9,7 +9,8 @@ import { SponsoredToggle } from "@/components/clipper/SponsoredToggle";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSponsoredClipIds, getSponsoredTag } from "@/lib/queries";
 import { fmtCountdown, fmtInt, fmtRelative, fmtUsd } from "@/lib/format";
-import { computePayoutAmount, effectiveSponsoredBonus } from "@/lib/payout-calc";
+import { computePayoutAmount } from "@/lib/payout-calc";
+import { resolveClipperPay } from "@/lib/campaign-rates";
 
 export const dynamic = "force-dynamic";
 
@@ -39,12 +40,12 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     ? (await getSponsoredClipIds(supabase, sponsoredTag.id, [clip.id])).has(clip.id)
     : false;
   // Bonus to show on the toggle: what this clip already carries, else what
-  // tagging it now would add (the clipper's override, else the campaign's).
-  const [{ data: clipCampaign }, { data: me }] = sponsoredTag
+  // tagging it now would add (lib/campaign-rates.ts resolution).
+  const [{ data: clipCampaign }, { data: me }, { data: myRates }] = sponsoredTag
     ? await Promise.all([
         supabase
           .from("campaigns")
-          .select("sponsored_bonus_usd")
+          .select("cpm_rate, max_payout_per_clip, weekly_base_pay_usd, sponsored_bonus_usd")
           .eq("id", clip.campaign_id)
           .maybeSingle(),
         supabase
@@ -52,12 +53,20 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
           .select("sponsored_bonus_override")
           .eq("id", user.id)
           .maybeSingle(),
+        supabase
+          .from("campaign_clipper_rates")
+          .select("weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+          .eq("clipper_id", user.id)
+          .eq("campaign_id", clip.campaign_id)
+          .maybeSingle(),
       ])
-    : [{ data: null }, { data: null }];
+    : [{ data: null }, { data: null }, { data: null }];
   const sponsoredBonusUsd =
     Number(clip.sponsored_bonus_snapshot ?? 0) > 0
       ? Number(clip.sponsored_bonus_snapshot)
-      : effectiveSponsoredBonus(me?.sponsored_bonus_override, clipCampaign?.sponsored_bonus_usd);
+      : clipCampaign
+        ? resolveClipperPay(clipCampaign, me, myRates).sponsoredBonus
+        : 0;
 
   const points =
     snapshots?.map((s) => ({

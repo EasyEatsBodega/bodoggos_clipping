@@ -6,7 +6,7 @@ import { parseTweetUrl } from "@/lib/url-canonicalizer";
 import { getXProvider } from "@/lib/x-provider";
 import { getCampaignSpend, getSponsoredTag, isCampaignOpen } from "@/lib/queries";
 import { weekStartET, weekEndET } from "@/lib/week";
-import { effectiveSponsoredBonus } from "@/lib/payout-calc";
+import { resolveClipperPay } from "@/lib/campaign-rates";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -74,12 +74,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "this campaign is not currently accepting clips" }, { status: 400 });
   }
 
-  const { data: enrollment } = await admin
-    .from("campaign_enrollments")
-    .select("clipper_id")
-    .eq("clipper_id", user.id)
-    .eq("campaign_id", campaign.id)
-    .maybeSingle();
+  const [{ data: enrollment }, { data: clipperRates, error: ratesErr }] = await Promise.all([
+    admin
+      .from("campaign_enrollments")
+      .select("clipper_id")
+      .eq("clipper_id", user.id)
+      .eq("campaign_id", campaign.id)
+      .maybeSingle(),
+    // This clipper's own rates in this campaign, if an admin set any.
+    admin
+      .from("campaign_clipper_rates")
+      .select("weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+      .eq("clipper_id", user.id)
+      .eq("campaign_id", campaign.id)
+      .maybeSingle(),
+  ]);
+  if (ratesErr) {
+    console.error("[clips] clipper rates lookup failed", ratesErr);
+    return NextResponse.json({ error: "could not load your rates, try again" }, { status: 500 });
+  }
   if (!enrollment) {
     return NextResponse.json(
       { error: "you need to enroll in this campaign before submitting" },
@@ -181,10 +194,12 @@ export async function POST(req: Request) {
   const trackingUntil = new Date();
   trackingUntil.setUTCDate(trackingUntil.getUTCDate() + Number(campaign.tracking_days));
 
-  const effectiveCpm = clipper.cpm_rate_override ?? campaign.cpm_rate;
-  const effectiveMax = clipper.max_payout_override ?? campaign.max_payout_per_clip;
-  let effectiveFlat: number | string = clipper.flat_fee_per_clip ?? 0;
-  if (campaign.weekly_base_pay_usd != null) {
+  // Campaign-specific rate → clipper-wide override → campaign default.
+  const pay = resolveClipperPay(campaign, clipper, clipperRates);
+  const effectiveCpm = pay.cpmRate;
+  const effectiveMax = pay.maxPayoutPerClip;
+  let effectiveFlat = pay.flatFeePerClip;
+  if (pay.weeklyBasePay != null) {
     // Weekly-base campaign: the flat weekly base replaces per-clip flat
     // fees. It rides as the flat_fee_snapshot on the FIRST counting clip
     // the clipper submits this ET week (Mon–Sun), so all downstream
@@ -207,16 +222,15 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-    effectiveFlat = (weekClipCount ?? 0) === 0 ? Number(campaign.weekly_base_pay_usd) : 0;
+    effectiveFlat = (weekClipCount ?? 0) === 0 ? pay.weeklyBasePay : 0;
   }
-  // The sponsored bonus (clipper override, else campaign setting, default
-  // $25) rides in the flat fee too, so finalize / owed / tax / budget count
-  // it with no special cases; sponsored_bonus_snapshot records the component
-  // so untagging later removes exactly this amount (see lib/sponsored.ts).
-  const sponsoredBonus = sponsoredTagId
-    ? effectiveSponsoredBonus(clipper.sponsored_bonus_override, campaign.sponsored_bonus_usd)
-    : 0;
-  const flatSnapshot = (Number(effectiveFlat) + sponsoredBonus).toFixed(2);
+  // The sponsored bonus (campaign-specific rate, clipper override, else
+  // campaign setting, default $25) rides in the flat fee too, so finalize /
+  // owed / tax / budget count it with no special cases;
+  // sponsored_bonus_snapshot records the component so untagging later
+  // removes exactly this amount (see lib/sponsored.ts).
+  const sponsoredBonus = sponsoredTagId ? pay.sponsoredBonus : 0;
+  const flatSnapshot = (effectiveFlat + sponsoredBonus).toFixed(2);
 
   const { data: clip, error: insertErr } = await admin
     .from("clips")

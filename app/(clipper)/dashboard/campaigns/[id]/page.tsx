@@ -13,7 +13,7 @@ import {
   isCampaignOpen,
 } from "@/lib/queries";
 import { fmtUsd } from "@/lib/format";
-import { effectiveSponsoredBonus } from "@/lib/payout-calc";
+import { resolveClipperPay } from "@/lib/campaign-rates";
 import type { Campaign, Clip } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,9 @@ export default async function ClipperCampaignDetailPage({
 
   const { data: clipper } = await supabase
     .from("clippers")
-    .select("id, x_handle, sponsored_bonus_override")
+    .select(
+      "id, x_handle, flat_fee_per_clip, cpm_rate_override, max_payout_override, sponsored_bonus_override",
+    )
     .eq("id", user.id)
     .maybeSingle();
   if (!clipper) redirect("/onboarding");
@@ -44,12 +46,21 @@ export default async function ClipperCampaignDetailPage({
     .maybeSingle<Campaign>();
   if (!campaign) notFound();
 
-  const { data: enrollment } = await supabase
-    .from("campaign_enrollments")
-    .select("clipper_id")
-    .eq("clipper_id", user.id)
-    .eq("campaign_id", campaign.id)
-    .maybeSingle();
+  const [{ data: enrollment }, { data: myRates }] = await Promise.all([
+    supabase
+      .from("campaign_enrollments")
+      .select("clipper_id")
+      .eq("clipper_id", user.id)
+      .eq("campaign_id", campaign.id)
+      .maybeSingle(),
+    // Rates an admin set for this clipper in this campaign (RLS: own rows).
+    supabase
+      .from("campaign_clipper_rates")
+      .select("weekly_base_pay_usd, cpm_rate, max_payout_per_clip, sponsored_bonus_usd")
+      .eq("clipper_id", user.id)
+      .eq("campaign_id", campaign.id)
+      .maybeSingle(),
+  ]);
 
   // Drafts are admin-only. A clipper who was already enrolled (campaign got
   // unpublished after they joined) still gets the page so they see the
@@ -57,12 +68,11 @@ export default async function ClipperCampaignDetailPage({
   if (!campaign.active && !enrollment) notFound();
 
   const open = isCampaignOpen(campaign);
-  // What a sponsored post earns this clipper here: their own deal, if an
-  // admin set one, else the campaign setting.
-  const sponsoredBonusUsd = effectiveSponsoredBonus(
-    clipper.sponsored_bonus_override,
-    campaign.sponsored_bonus_usd,
-  );
+  // What this clipper earns here: their rate in this campaign, else their
+  // account-wide deal, else the campaign setting — the same resolution the
+  // submit route snapshots onto each clip.
+  const pay = resolveClipperPay(campaign, clipper, myRates);
+  const sponsoredBonusUsd = pay.sponsoredBonus;
 
   const [{ data: clips }, spent, { data: creatorTags }, sponsoredTag] = await Promise.all([
     supabase
@@ -138,26 +148,24 @@ export default async function ClipperCampaignDetailPage({
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border border-border p-4 font-mono text-xs">
-            {campaign.weekly_base_pay_usd != null && (
+            {pay.weeklyBasePay != null && (
               <div>
                 <div className="text-text-3 text-[10px] uppercase tracking-widest">
                   base pay
                 </div>
-                <div>{fmtUsd(campaign.weekly_base_pay_usd)} / week</div>
+                <div>{fmtUsd(pay.weeklyBasePay)} / week</div>
               </div>
             )}
             <div>
               <div className="text-text-3 text-[10px] uppercase tracking-widest">
-                {campaign.weekly_base_pay_usd != null ? "cpm bonus" : "cpm"}
+                {pay.weeklyBasePay != null ? "cpm bonus" : "cpm"}
               </div>
-              <div>
-                {Number(campaign.cpm_rate) > 0 ? `${fmtUsd(campaign.cpm_rate)} / 1k` : "—"}
-              </div>
+              <div>{pay.cpmRate > 0 ? `${fmtUsd(pay.cpmRate)} / 1k` : "—"}</div>
             </div>
-            {Number(campaign.cpm_rate) > 0 && (
+            {pay.cpmRate > 0 && (
               <div>
                 <div className="text-text-3 text-[10px] uppercase tracking-widest">cap / clip</div>
-                <div>{fmtUsd(campaign.max_payout_per_clip)}</div>
+                <div>{fmtUsd(pay.maxPayoutPerClip)}</div>
               </div>
             )}
             {sponsoredTag && sponsoredBonusUsd > 0 && (
@@ -199,9 +207,9 @@ export default async function ClipperCampaignDetailPage({
                 <p>
                   <span className="text-accent">// weekly base —</span> your first counting
                   post each week (Mon–Sun ET) locks in{" "}
-                  {fmtUsd(campaign.weekly_base_pay_usd)}. Impressions are still tracked on
+                  {fmtUsd(pay.weeklyBasePay ?? 0)}. Impressions are still tracked on
                   every post
-                  {Number(campaign.cpm_rate) > 0
+                  {pay.cpmRate > 0
                     ? ", and the cpm bonus pays on top."
                     : "."}
                 </p>

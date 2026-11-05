@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { payOverridesSchema } from "@/lib/validators";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { computePayoutAmount, effectiveSponsoredBonus } from "@/lib/payout-calc";
+import { computePayoutAmount } from "@/lib/payout-calc";
+import { resolveClipperPay, type CampaignClipperRates } from "@/lib/campaign-rates";
 import { getSponsoredClipIds, getSponsoredTag } from "@/lib/queries";
 
 export async function POST(
@@ -38,9 +39,10 @@ export async function POST(
 
   // Backfill: rewrite snapshots on every existing clip for this clipper, and
   // recompute payout_amount for completed clips against final_impressions.
-  // Each clip's snapshot is reset to (override ?? its-own-campaign-default),
-  // so a clipper with clips across multiple campaigns keeps the correct
-  // per-campaign rate where there's no override.
+  // Each clip's snapshot is reset to (campaign-specific rate ?? override ??
+  // its-own-campaign-default), so a clipper with clips across multiple
+  // campaigns keeps the correct per-campaign rate where there's no override,
+  // and a rate negotiated on a campaign page is never clobbered.
   const { data: clips, error: clipsErr } = await auth.admin
     .from("clips")
     .select(
@@ -79,9 +81,19 @@ export async function POST(
     }
   }
 
+  // Rates set for this clipper on individual campaign pages.
+  const { data: rateRows, error: ratesErr } = await auth.admin
+    .from("campaign_clipper_rates")
+    .select("*")
+    .eq("clipper_id", id);
+  if (ratesErr) return NextResponse.json({ error: ratesErr.message }, { status: 500 });
+  const ratesByCampaign = new Map<string, CampaignClipperRates>(
+    (rateRows ?? []).map((r) => [r.campaign_id, r]),
+  );
+
   // When the sponsored bonus deal is part of this save, clips tagged
-  // sponsored get re-priced to it (override ?? their campaign's bonus), the
-  // same way cpm / cap reset to override ?? campaign default above.
+  // sponsored get re-priced to it (campaign rate ?? override ?? their
+  // campaign's bonus), the same way cpm / cap reset below.
   const repriceSponsored = parsed.data.sponsored_bonus_override !== undefined;
   const sponsoredTag = repriceSponsored ? await getSponsoredTag(auth.admin) : null;
   const sponsoredClipIds = sponsoredTag
@@ -96,26 +108,29 @@ export async function POST(
   let recomputed = 0;
   for (const c of clips ?? []) {
     const defaults = campaignDefaults.get(c.campaign_id);
-    const campCpm = defaults?.cpm_rate ?? 0;
-    const campMax = defaults?.max_payout_per_clip ?? 0;
-    const effectiveCpm = parsed.data.cpm_rate_override ?? campCpm;
-    const effectiveMax = parsed.data.max_payout_override ?? campMax;
+    const pay = resolveClipperPay(
+      defaults ?? {
+        cpm_rate: 0,
+        max_payout_per_clip: 0,
+        weekly_base_pay_usd: null,
+        sponsored_bonus_usd: 0,
+      },
+      parsed.data,
+      ratesByCampaign.get(c.campaign_id),
+    );
+    const effectiveCpm = pay.cpmRate;
+    const effectiveMax = pay.maxPayoutPerClip;
     // Weekly-base campaigns carry the weekly base in flat_fee_snapshot (on
     // the first clip of each week), so the per-clipper flat doesn't apply
     // there — keep the base and only swap the sponsored component.
     // Elsewhere, re-add the sponsored bonus so the override doesn't
     // silently drop it.
     const currentBonus = Number(c.sponsored_bonus_snapshot ?? 0);
-    const sponsoredBonus = sponsoredClipIds.has(c.id)
-      ? effectiveSponsoredBonus(
-          parsed.data.sponsored_bonus_override,
-          defaults?.sponsored_bonus_usd,
-        )
-      : currentBonus;
+    const sponsoredBonus = sponsoredClipIds.has(c.id) ? pay.sponsoredBonus : currentBonus;
     const effectiveFlat =
-      defaults?.weekly_base_pay_usd != null
+      pay.weeklyBasePay != null
         ? Math.max(0, Number(c.flat_fee_snapshot ?? 0) - currentBonus + sponsoredBonus)
-        : parsed.data.flat_fee_per_clip + sponsoredBonus;
+        : pay.flatFeePerClip + sponsoredBonus;
 
     const update: Record<string, unknown> = {
       cpm_rate_snapshot: effectiveCpm,

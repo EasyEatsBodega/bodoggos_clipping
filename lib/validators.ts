@@ -176,6 +176,20 @@ export const payOverridesSchema = z.object({
   apply_to_existing: z.boolean().optional(),
 });
 
+// One clipper's rates inside one campaign (campaign_clipper_rates).
+// null = no campaign-specific rate; falls back to the clipper-wide override
+// and then the campaign default.
+export const campaignClipperRatesSchema = z.object({
+  weekly_base_pay_usd: z.number().nonnegative().max(100_000).nullable(),
+  cpm_rate: z.number().nonnegative().max(1000).nullable(),
+  max_payout_per_clip: z.number().nonnegative().max(100_000).nullable(),
+  sponsored_bonus_usd: z.number().nonnegative().max(10_000).nullable(),
+});
+
+export const addCampaignClipperSchema = z.object({
+  clipper_id: z.string().uuid(),
+});
+
 const isoDateString = z.string().datetime({ offset: true });
 
 export const campaignSlugSchema = z
