@@ -159,7 +159,7 @@ export type ClipTag = {
   id: string;
   slug: string;
   label: string;
-  kind: "topic" | "creator" | "partner";
+  kind: "topic" | "creator" | "partner" | "format";
   sort_order: number;
   created_at: string;
 };

@@ -9,7 +9,7 @@ export function CreateTagForm() {
   const router = useRouter();
   const [label, setLabel] = useState("");
   const [slug, setSlug] = useState("");
-  const [kind, setKind] = useState<"topic" | "creator" | "partner">("topic");
+  const [kind, setKind] = useState<"topic" | "creator" | "partner" | "format">("topic");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,12 +71,15 @@ export function CreateTagForm() {
           <select
             id="tag-kind"
             value={kind}
-            onChange={(e) => setKind(e.target.value as "topic" | "creator" | "partner")}
+            onChange={(e) =>
+              setKind(e.target.value as "topic" | "creator" | "partner" | "format")
+            }
             className="font-mono text-sm px-3 py-2 border border-border bg-transparent"
           >
             <option value="topic">topic</option>
             <option value="creator">creator</option>
             <option value="partner">partner</option>
+            <option value="format">format</option>
           </select>
         </div>
         <div className="flex items-end">

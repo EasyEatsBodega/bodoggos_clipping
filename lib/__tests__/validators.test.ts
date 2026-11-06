@@ -3,7 +3,9 @@ import {
   campaignConfigSchema,
   clipSponsoredSchema,
   createCampaignSchema,
+  setClipTagsSchema,
   submitClipSchema,
+  tagSchema,
   zodErrorSummary,
 } from "../validators";
 
@@ -84,9 +86,35 @@ describe("clip submission validators", () => {
     expect(submitClipSchema.safeParse({ ...base, sponsored: "yes" }).success).toBe(false);
   });
 
+  it("format_tag_id is optional and must be a uuid", () => {
+    expect(
+      submitClipSchema.safeParse({ ...base, format_tag_id: "3f2504e0-4f89-41d3-9a0c-0305e82c3302" })
+        .success,
+    ).toBe(true);
+    expect(submitClipSchema.safeParse({ ...base, format_tag_id: "office-skits" }).success).toBe(
+      false,
+    );
+  });
+
   it("post-submit toggle requires an explicit boolean", () => {
     expect(clipSponsoredSchema.safeParse({ sponsored: false }).success).toBe(true);
     expect(clipSponsoredSchema.safeParse({}).success).toBe(false);
     expect(clipSponsoredSchema.safeParse({ sponsored: 1 }).success).toBe(false);
+  });
+});
+
+describe("tag validators", () => {
+  it("accepts the format kind", () => {
+    expect(
+      tagSchema.safeParse({ slug: "office-skits", label: "Office skits", kind: "format" }).success,
+    ).toBe(true);
+    expect(tagSchema.safeParse({ slug: "x", label: "X", kind: "genre" }).success).toBe(false);
+  });
+
+  it("a clip can carry at most one format (like partner); topics stay multi", () => {
+    const two = ["3f2504e0-4f89-41d3-9a0c-0305e82c3301", "3f2504e0-4f89-41d3-9a0c-0305e82c3302"];
+    expect(setClipTagsSchema.safeParse({ tag_ids: two, kind: "format" }).success).toBe(false);
+    expect(setClipTagsSchema.safeParse({ tag_ids: [two[0]], kind: "format" }).success).toBe(true);
+    expect(setClipTagsSchema.safeParse({ tag_ids: two, kind: "topic" }).success).toBe(true);
   });
 });

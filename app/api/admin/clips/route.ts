@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 // Either, both, or neither may be provided. Pass via query string (GET) or
 // JSON body (GET/POST). Returns one row per non-rejected clip with the
 // fields the tracker needs: handle, submission date, tweet link, creator,
-// partner, impressions, and whether the clipper marked it as sponsored.
+// partner, format, impressions, and whether the clipper marked it as
+// sponsored.
 
 type ClipRow = {
   handle: string | null;
@@ -23,6 +24,7 @@ type ClipRow = {
   tweet_link: string;
   creator: string | null;
   partner: string | null;
+  format: string | null;
   impressions: number;
   sponsored: boolean;
 };
@@ -48,7 +50,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const { data: tagsRaw, error: tagsErr } = await admin
     .from("clip_tags")
     .select("id, slug, label, kind")
-    .in("kind", ["creator", "partner"]);
+    .in("kind", ["creator", "partner", "format"]);
   if (tagsErr) {
     return NextResponse.json({ error: tagsErr.message }, { status: 500 });
   }
@@ -204,6 +206,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const clipIds = clips.map((c) => c.id);
   const creatorByClip = new Map<string, string[]>();
   const partnerByClip = new Map<string, string[]>();
+  const formatByClip = new Map<string, string[]>();
   const sponsoredClips = new Set<string>();
   if (clipIds.length) {
     let assignments: Array<{ clip_id: string; tag_id: string }> = [];
@@ -227,7 +230,12 @@ async function handle(req: Request): Promise<NextResponse> {
       }
       const tag = tagById.get(a.tag_id);
       if (!tag) continue;
-      const target = tag.kind === "creator" ? creatorByClip : partnerByClip;
+      const target =
+        tag.kind === "creator"
+          ? creatorByClip
+          : tag.kind === "partner"
+            ? partnerByClip
+            : formatByClip;
       const cur = target.get(a.clip_id) ?? [];
       cur.push(tag.label);
       target.set(a.clip_id, cur);
@@ -237,6 +245,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const rows: ClipRow[] = clips.map((c) => {
     const creators = creatorByClip.get(c.id) ?? [];
     const partners = partnerByClip.get(c.id) ?? [];
+    const formats = formatByClip.get(c.id) ?? [];
     // final_impressions is the locked-in count for completed clips;
     // impressions is the latest poll while tracking. Match the admin UI.
     const views = Number(c.final_impressions ?? c.impressions ?? 0);
@@ -247,6 +256,7 @@ async function handle(req: Request): Promise<NextResponse> {
       tweet_link: c.url,
       creator: creators.length ? creators.join(", ") : null,
       partner: partners.length ? partners.join(", ") : null,
+      format: formats.length ? formats.join(", ") : null,
       impressions: views,
       sponsored: sponsoredClips.has(c.id),
     };
